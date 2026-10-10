@@ -7,6 +7,7 @@ import { svgString, type Overlay } from "./render";
 import { barLink, type Join } from "./rules";
 import { cleanPreset, cleanState, type Preset, type State } from "./presets";
 import { FLAECHE_1902 } from "./style";
+import "./site";
 
 type HandleKind = "h" | "w" | "bar" | "foot" | "top";
 

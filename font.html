@@ -3,29 +3,113 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Neustift – Probe</title>
+    <title>Neustift – Schrift und Download</title>
+    <link rel="stylesheet" href="./src/site.css" />
     <style>
-      body { margin: 0; padding: 16px; font: 14px/1.4 system-ui, sans-serif; color: #1d1a17; background: #f6f1e7; }
-      header { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
-      #text { width: min(520px, 80vw); padding: 6px 8px; font: 600 18px system-ui, sans-serif; letter-spacing: 0.08em; }
-      h2 { margin: 20px 0 6px; font-size: 12px; font-weight: 600; color: #6b6152; text-transform: uppercase; letter-spacing: 0.1em; }
+      main { padding: 0 var(--gutter) 64px; }
+      main > section { padding: 40px 0; border-bottom: 1px solid var(--line); }
+      main > section:last-child { border-bottom: 0; }
+      .head { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 20px 40px; padding-top: 32px; }
+      .head .lead { margin-top: 10px; }
+      .downloads { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; max-width: 400px; padding-bottom: 4px; }
+      .downloads .note { flex-basis: 100%; margin: 4px 0 0; font-size: 13px; color: var(--muted); text-align: right; }
+
+      .specimen-bar { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 24px; }
+      #text {
+        display: block;
+        width: 100%;
+        margin-top: 16px;
+        padding: 0 0 4px;
+        min-height: 0;
+        font: clamp(64px, 12vw, 168px)/1.05 var(--display);
+        color: var(--ink);
+        background: transparent;
+        border: 0;
+        border-bottom: 1px solid var(--ink);
+        border-radius: 0;
+      }
+      #text:focus-visible { outline: none; border-bottom: 2px solid var(--gold); }
+      body:has(#dlig:checked) #text { font-variant-ligatures: common-ligatures discretionary-ligatures contextual; }
+      #status { margin-top: 8px; }
+      #status:empty { display: none; }
+
+      .sub { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 24px; margin-bottom: 24px; }
+      #charset section + section { margin-top: 28px; }
+      #charset h3 { margin: 0 0 10px; }
+      .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--line); border-left: 1px solid var(--line); }
+      .grid li { display: flex; flex-direction: column; align-items: center; justify-content: space-between; padding: 10px 4px 6px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+      .grid li:hover { background: var(--paper-2); }
+      .grid .glyph { font: 48px/1.1 var(--display); }
+      .grid small { font: 10px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted); }
+
+      .compare h3 { margin: 20px 0 8px; }
       #font { font-family: "Neustift"; font-size: 120px; line-height: 1.15; white-space: pre; overflow-x: auto; }
       #font.dlig { font-variant-ligatures: common-ligatures discretionary-ligatures contextual; }
+      #engine { overflow-x: auto; }
       #engine svg { display: block; }
-      #status { color: #8a5a12; min-height: 1.4em; }
+
+      @media (max-width: 700px) {
+        .head { grid-template-columns: minmax(0, 1fr); }
+        .downloads { justify-content: flex-start; }
+        .downloads .note { text-align: left; }
+        main > section { padding: 28px 0; }
+        .grid { grid-template-columns: repeat(auto-fill, minmax(56px, 1fr)); }
+        .grid .glyph { font-size: 40px; }
+      }
     </style>
   </head>
   <body>
-    <header>
-      <input id="text" value="Die Fläche" aria-label="Text" />
-      <label><input id="dlig" type="checkbox" /> bedingte Ligaturen (HAF)</label>
-      <span>Neustift herunterladen: <a href="./Neustift-Regular.otf" download>OTF</a> · <a href="./Neustift-Regular.woff2" download>WOFF2</a> · frei unter der <a href="./OFL.txt">SIL Open Font License</a> · <a href="./">Werkstatt</a></span>
+    <header class="site">
+      <a id="wordmark" class="wordmark" href="./" aria-label="Neustift – zur Werkstatt"></a>
+      <nav aria-label="Seiten">
+        <a href="./">Werkstatt</a>
+        <a href="./font" aria-current="page">Schrift &amp; Download</a>
+        <a href="https://github.com/hfock/neustift">GitHub</a>
+      </nav>
     </header>
-    <div id="status"></div>
-    <h2>Font (WOFF2, calt und liga an)</h2>
-    <div id="font"></div>
-    <h2>Engine (Verschränkung 0,5)</h2>
-    <div id="engine"></div>
+    <div class="band" aria-hidden="true"></div>
+    <main>
+      <section class="head">
+        <div>
+          <h1>Schrift</h1>
+          <p class="lead">Neustift ist eine Display-Schrift im Duktus der Wiener Moderne um 1902, gezeichnet nach dem Schriftzug „DIE FLÄCHE“. Der Name kommt von der Neustiftgasse in Wien, ab 1903 Sitz der Wiener Werkstätte.</p>
+        </div>
+        <div class="downloads">
+          <a class="btn primary" href="./Neustift-Regular.otf" download>OTF herunterladen</a>
+          <a class="btn" href="./Neustift-Regular.woff2" download>WOFF2</a>
+          <a class="btn" href="./OFL.txt">Lizenz (OFL)</a>
+          <p class="note">Frei unter der SIL Open Font License 1.1.</p>
+        </div>
+      </section>
+
+      <section aria-labelledby="probe">
+        <div class="specimen-bar">
+          <label id="probe" for="text" class="eyebrow">Probetext – zum Ändern hineinschreiben</label>
+          <label class="row"><input id="dlig" type="checkbox" /> bedingte Ligaturen (HAF)</label>
+        </div>
+        <input id="text" value="Die Fläche" spellcheck="false" autocomplete="off" />
+        <div id="status" class="status" role="status"></div>
+      </section>
+
+      <section aria-labelledby="zeichensatz">
+        <div class="sub">
+          <h2 id="zeichensatz">Zeichensatz</h2>
+          <p class="lead">Versalien, Kleinbuchstaben, Ziffern und Zeichen, jedes in der Webfont gesetzt.</p>
+        </div>
+        <div id="charset"></div>
+      </section>
+
+      <section class="compare" aria-labelledby="vergleich">
+        <div class="sub">
+          <h2 id="vergleich">Font und Engine</h2>
+          <p class="lead">Der Probetext zweimal im selben Maßstab: als Webfont und so, wie ihn die Engine der Werkstatt setzt.</p>
+        </div>
+        <h3 class="eyebrow">Font (WOFF2, calt und liga an)</h3>
+        <div id="font"></div>
+        <h3 class="eyebrow">Engine (Verschränkung 0,5)</h3>
+        <div id="engine"></div>
+      </section>
+    </main>
     <script type="module" src="./src/fonttest.ts"></script>
   </body>
 </html>

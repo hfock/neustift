@@ -3,82 +3,146 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Neustift</title>
+    <title>Neustift – Werkstatt</title>
+    <link rel="stylesheet" href="./src/site.css" />
     <style>
-      :root { --ink: #1d1a17; --line: #cdbfa4; --accent: #8a5a12; --muted: #6b6152; }
-      * { box-sizing: border-box; }
-      body { margin: 0; font: 14px/1.4 system-ui, sans-serif; color: var(--ink); background: #f6f1e7; }
-      header, footer { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 10px 16px; }
-      header { border-bottom: 1px solid var(--line); }
-      .fontlink { margin-left: auto; color: inherit; }
-      footer { border-top: 1px solid var(--line); }
-      main { display: grid; grid-template-columns: 1fr 270px; min-height: calc(100vh - 120px); }
-      #stage { padding: 16px; overflow: auto; }
+      main {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 300px;
+        grid-template-areas: "intro aside" "stage aside";
+        grid-template-rows: auto 1fr;
+        min-height: calc(100vh - 80px);
+      }
+      .intro { grid-area: intro; display: flex; align-items: flex-end; flex-wrap: wrap; gap: 8px 32px; padding: 28px var(--gutter) 20px; }
+      .intro h1 { font-size: clamp(56px, 7vw, 88px); }
+      .intro .lead { padding-bottom: 6px; }
+      #stage { grid-area: stage; min-width: 0; padding: 0 var(--gutter) 32px; }
+      .toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end;
+        gap: 12px 24px;
+        padding: 12px 0;
+        border-top: 1px solid var(--ink);
+      }
+      .toolbar .field { display: flex; flex-direction: column; gap: 4px; flex: 1 1 280px; min-width: 0; }
+      #text { width: 100%; padding: 6px 10px; font: 600 18px var(--sans); letter-spacing: 0.08em; }
+      .variants-box { display: flex; flex-direction: column; gap: 4px; }
+      #variants { display: inline-flex; flex-wrap: wrap; gap: 4px; min-height: 34px; }
+      #variants button { min-width: 36px; padding: 4px 8px; }
+      #variants button.on { background: var(--ink); color: var(--paper); }
+      .canvas { overflow: auto; border: 1px solid var(--line); background: var(--paper-2); }
       #preview svg { display: block; width: 100%; height: auto; max-height: 62vh; }
       #preview [data-i] { cursor: pointer; }
-      .handle { fill: #fff; stroke: var(--accent); stroke-width: 2px; vector-effect: non-scaling-stroke; cursor: grab; }
-      aside { display: flex; flex-direction: column; gap: 10px; padding: 12px 16px; border-left: 1px solid var(--line); }
-      label { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--muted); }
-      label.row { flex-direction: row; align-items: center; gap: 6px; }
-      #text { width: min(520px, 60vw); padding: 6px 8px; font: 600 18px system-ui, sans-serif; letter-spacing: 0.08em; }
-      #variants { display: inline-flex; gap: 4px; }
-      #variants button { min-width: 32px; }
-      #variants button.on { background: var(--ink); color: #fff; }
-      #letter { display: none; flex-direction: column; gap: 6px; padding: 8px; border: 1px solid var(--line); border-radius: 4px; }
+      .handle { fill: #fff; stroke: var(--gold-ink); stroke-width: 2px; vector-effect: non-scaling-stroke; cursor: grab; }
+      .hint { margin: 10px 0 0; font-size: 13px; color: var(--muted); }
+      #status { margin-top: 6px; }
+
+      aside { grid-area: aside; background: var(--paper-2); border-left: 1px solid var(--line); padding: 8px 20px 32px; }
+      .group { display: flex; flex-direction: column; gap: 12px; padding: 16px 0 18px; border-bottom: 1px solid var(--line); }
+      .group:last-child { border-bottom: 0; }
+      .group > h2 { font: 600 12px/1.2 var(--sans); letter-spacing: 0.12em; text-transform: uppercase; color: var(--gold-ink); }
+      aside label { display: flex; flex-direction: column; gap: 2px; font-size: 13px; color: var(--muted); }
+      aside label.row { color: var(--ink); }
+      .buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+      .buttons > * { flex: 1 1 auto; }
+      #preset { width: 100%; }
+      details summary { cursor: pointer; font-size: 13px; color: var(--ink); }
+      details[open] summary { margin-bottom: 10px; }
+      details > label + label { margin-top: 10px; }
+      .colors { display: flex; gap: 20px; }
+      .colors label { flex-direction: row; align-items: center; gap: 8px; color: var(--ink); }
+      #letter { display: none; }
       #letter.on { display: flex; }
-      #status { min-height: 1.4em; margin-top: 8px; color: var(--accent); }
+      #letterName { font-size: 15px; }
+      #letter select { width: 100%; }
+
+      @media (max-width: 820px) {
+        main { grid-template-columns: minmax(0, 1fr); grid-template-areas: "intro" "stage" "aside"; grid-template-rows: auto; min-height: 0; }
+        .intro { padding-top: 20px; padding-bottom: 14px; }
+        .hint { display: none; } /* Tastenkürzel: am Telefon ohne Tastatur */
+        aside { border-left: 0; border-top: 1px solid var(--ink); padding: 4px var(--gutter) 32px; }
+      }
     </style>
   </head>
   <body>
-    <header>
-      <input id="text" aria-label="Text" />
-      <select id="preset" aria-label="Vorlagen"></select>
-      <button id="savePreset">Als Vorlage speichern</button>
-      <button id="exportPreset">Vorlage exportieren</button>
-      <label class="row">Vorlage importieren <input id="importPreset" type="file" accept="application/json" /></label>
-      <a class="fontlink" href="./font">Font-Probe und Download</a>
+    <header class="site">
+      <a id="wordmark" class="wordmark" href="./" aria-label="Neustift – Werkstatt"></a>
+      <nav aria-label="Seiten">
+        <a href="./" aria-current="page">Werkstatt</a>
+        <a href="./font">Schrift &amp; Download</a>
+        <a href="https://github.com/hfock/neustift">GitHub</a>
+      </nav>
     </header>
+    <div class="band" aria-hidden="true"></div>
     <main>
-      <section id="stage">
-        <div id="preview"></div>
-        <div id="status" role="status"></div>
+      <div class="intro">
+        <h1>Werkstatt</h1>
+        <p class="lead">Text eingeben, die Engine verschränkt die Buchstaben. Einen Buchstaben anklicken, um ihn an den Griffen zu formen.</p>
+      </div>
+      <section id="stage" aria-label="Vorschau">
+        <div class="toolbar">
+          <label class="field"><span class="eyebrow">Text</span><input id="text" aria-label="Text" /></label>
+          <div class="variants-box"><span class="eyebrow">Varianten</span><span id="variants"></span></div>
+        </div>
+        <div class="canvas"><div id="preview"></div></div>
+        <div id="status" class="status" role="status"></div>
+        <p class="hint">Rückgängig mit ⌘Z / Strg+Z, wiederholen mit ⇧⌘Z. Pfeiltasten wechseln die Variante.</p>
       </section>
-      <aside>
-        <label class="row"><input id="targetFree" type="checkbox" /> Zielbreite frei</label>
-        <label>Zielbreite <input id="target" type="range" min="800" max="8000" step="10" /></label>
-        <label>Verschränkung (brav ↔ wild) <input id="interlock" type="range" min="0" max="1" step="0.05" /></label>
-        <details>
-          <summary>Feinheiten</summary>
-          <label>Strich <input id="stroke" type="range" min="14" max="44" step="1" /></label>
-          <label>Balken oben <input id="barHigh" type="range" min="420" max="640" step="2" /></label>
-          <label>Balken unten <input id="barLow" type="range" min="60" max="280" step="2" /></label>
-          <label>Wortabstand <input id="wordGap" type="range" min="40" max="400" step="2" /></label>
-        </details>
-        <label class="row"><input id="overlay" type="checkbox" /> Original drüber</label>
-        <label>Deckkraft <input id="opacity" type="range" min="0.1" max="1" step="0.05" /></label>
-        <label class="row">Tinte <input id="inkColor" type="color" /> Papier <input id="paperColor" type="color" /></label>
-        <div id="letter">
+      <aside aria-label="Einstellungen">
+        <section class="group">
+          <h2>Vorlagen</h2>
+          <select id="preset" aria-label="Vorlagen"></select>
+          <div class="buttons">
+            <button id="savePreset">Als Vorlage speichern</button>
+            <button id="exportPreset">Vorlage exportieren</button>
+            <label class="btn row">Vorlage importieren <input id="importPreset" class="vh" type="file" accept="application/json" /></label>
+          </div>
+        </section>
+        <section class="group">
+          <h2>Form</h2>
+          <label class="row"><input id="targetFree" type="checkbox" /> Zielbreite frei</label>
+          <label>Zielbreite <input id="target" type="range" min="800" max="8000" step="10" /></label>
+          <label>Verschränkung (brav ↔ wild) <input id="interlock" type="range" min="0" max="1" step="0.05" /></label>
+          <details>
+            <summary>Feinheiten</summary>
+            <label>Strich <input id="stroke" type="range" min="14" max="44" step="1" /></label>
+            <label>Balken oben <input id="barHigh" type="range" min="420" max="640" step="2" /></label>
+            <label>Balken unten <input id="barLow" type="range" min="60" max="280" step="2" /></label>
+            <label>Wortabstand <input id="wordGap" type="range" min="40" max="400" step="2" /></label>
+          </details>
+        </section>
+        <section id="letter" class="group">
           <strong id="letterName"></strong>
           <label>Verbindung links <select id="joinLeft"></select></label>
           <label>Verbindung rechts <select id="joinRight"></select></label>
           <label class="row"><input id="barRight" type="checkbox" /> Balken nach rechts verbinden</label>
           <button id="resetLetter">Zurücksetzen</button>
-        </div>
+        </section>
+        <section class="group">
+          <h2>Farben &amp; Original</h2>
+          <div class="colors">
+            <label>Tinte <input id="inkColor" type="color" /></label>
+            <label>Papier <input id="paperColor" type="color" /></label>
+          </div>
+          <label class="row"><input id="overlay" type="checkbox" /> Original drüber</label>
+          <label>Deckkraft <input id="opacity" type="range" min="0.1" max="1" step="0.05" /></label>
+        </section>
+        <section class="group">
+          <h2>Export</h2>
+          <label class="row"><input id="transparent" type="checkbox" /> transparent</label>
+          <div class="buttons">
+            <select id="pngScale" aria-label="PNG-Größe">
+              <option value="0.5">PNG 1×</option>
+              <option value="1" selected>PNG 2×</option>
+              <option value="2">PNG 4×</option>
+            </select>
+            <button id="exportPng" class="btn primary">PNG</button>
+            <button id="exportSvg" class="btn primary">SVG</button>
+          </div>
+        </section>
       </aside>
     </main>
-    <footer>
-      <span>Varianten</span>
-      <span id="variants"></span>
-      <span style="flex: 1"></span>
-      <label class="row"><input id="transparent" type="checkbox" /> transparent</label>
-      <select id="pngScale" aria-label="PNG-Größe">
-        <option value="0.5">PNG 1×</option>
-        <option value="1" selected>PNG 2×</option>
-        <option value="2">PNG 4×</option>
-      </select>
-      <button id="exportPng">PNG</button>
-      <button id="exportSvg">SVG</button>
-    </footer>
     <script type="module" src="./src/ui.ts"></script>
   </body>
 </html>
