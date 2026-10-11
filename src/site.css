@@ -1,9 +1,5 @@
 /* Gemeinsames Aussehen von Werkstatt und Font-Probe */
-@font-face {
-  font-family: "Neustift";
-  src: url("../dist/Neustift-Regular.woff2") format("woff2");
-  font-display: swap;
-}
+/* @font-face steht im <head> beider Seiten: die WOFF2 kommt als eigene Datei (dist/ im Dev-Server, web/ beim Ausrollen) */
 
 :root {
   --paper: #f3ecdf;

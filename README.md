@@ -17,12 +17,13 @@ Live: https://font.fock.rocks (Werkstatt) und https://font.fock.rocks/font (Font
 
 | Befehl | Wirkung |
 |---|---|
-| `bun run dev` | App auf http://localhost:3457, Font-Probe auf http://localhost:3457/font (nach `bun run font`) |
+| `bun run dev` | App auf http://localhost:3457, Font-Probe auf http://localhost:3457/font (baut beim ersten Mal den Font, falls `dist/` fehlt) |
 | `bun test` | alle Prüfungen |
-| `bun run typecheck` | TypeScript prüfen |
+| `bun run typecheck` | TypeScript prüfen (`src/`, `tools/`) |
 | `bun run sheet` | Prüfblätter nach `out/` (PNG, wenn Inkscape installiert ist) |
 | `bun run font` | Font bauen und prüfen: `dist/Neustift-Regular.otf` und `.woff2` (braucht uv; beim ersten Mal Netz für die Python-Pakete) |
-| `bun run web` | statische Seite nach `web/`: Werkstatt, Font-Probe, OTF, WOFF2 und OFL zum Herunterladen (Ausrollen: `stacks/neustift/README.md` im cf-ventures-Repo) |
+| `bun run web` | statische Seite nach `web/`: Werkstatt, Font-Probe, OTF, WOFF2 und OFL zum Herunterladen, dazu `public/` (Favicons, Teilbild, robots.txt, sitemap.xml) (Ausrollen: `stacks/neustift/README.md` im cf-ventures-Repo) |
+| `bun run icons` | Teilbild `public/og.png` und Favicons aus der Engine neu erzeugen (PNG über Inkscape) |
 | `uv run tools/overlay.py` | Referenz-Overlay neu erzeugen, Werte für `presets/die-flaeche.json` ausgeben |
 
 ## Aufbau
