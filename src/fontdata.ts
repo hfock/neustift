@@ -257,7 +257,7 @@ function features(reg: Map<string, Glyph>, fNest: Glyph, r: Rules, lower: Glyph[
     const m = marked(text).split(" ");
     out.push(`feature ${feat} {\n  ignore sub @WORD ${m.join(" ")};\n  ignore sub ${m.join(" ")} @WORD;\n  sub ${m[0]} lookup ${lig} ${m.slice(1).join(" ")};\n} ${feat};`);
   }
-  // calt-Lookups. Zuerst die Kleinbuchstaben-Formen der Satzzeichen (wie lowerForms in der Engine): Versal und Ziffer gewinnen
+  // calt-Lookups. Zuerst die Kleinbuchstaben-Formen der Satzzeichen (wie lowerForms in der Engine): der rechte Nachbar entscheidet, ohne Buchstaben rechts der linke
   const all = [...reg.values()], cls = (re: RegExp) => all.filter((g) => re.test(g.char)).map((g) => g.name);
   out.push(`@LC = [${cls(/\p{Ll}/u).join(" ")}];`, `@UC = [${[...cls(/[\p{Lu}\p{N}\uE000]/u), NAME_LIG].join(" ")}];`);
   const parens = lower.filter((g) => "()".includes(g.char)).flatMap((g) => [glyphName(g.char), g.name]);
@@ -265,8 +265,10 @@ function features(reg: Map<string, Glyph>, fNest: Glyph, r: Rules, lower: Glyph[
   const dash = lower.filter((g) => "-–".includes(g.char)).flatMap((g) => {
     const n = glyphName(g.char);
     return [
-      ...[`@UC ${n}'`, `@UC space ${n}'`, `${n}' @UC`, `${n}' space @UC`].map((c) => `  ignore sub ${c};`),
-      ...[`@LC ${n}'`, `@LC space ${n}'`, `${n}' @LC`, `${n}' space @LC`].map((c) => `  sub ${c} by ${g.name};`),
+      `  sub ${n}' @LC by ${g.name};`,
+      `  ignore sub ${n}' @UC;`,
+      ...[`@UC ${n}'`, `@UC space ${n}'`].map((c) => `  ignore sub ${c};`),
+      ...[`@LC ${n}'`, `@LC space ${n}'`].map((c) => `  sub ${c} by ${g.name};`),
     ];
   });
   out.push(`lookup LOWER_DASH {\n${dash.join("\n")}\n} LOWER_DASH;`);
@@ -333,7 +335,7 @@ const TESTS: [string, Record<string, boolean>][] = [
   // Feinschliff: Satzzeichen mit Mindestabstand und Höhe je Umgebung
   ["E-g", {}], ["E-G", {}], ["F-a", {}], ["L-T", {}], ["H-H", {}], ["T-Shirt", {}], ["Ost-West", {}], ["e-mail", {}], ["E-mail", {}], ["x-Achse", {}],
   ["A-Z", {}], ["10-20", {}], ["10–20 Uhr", {}], ["Wien – Berlin", {}], ["und – so", {}], ["(neu)", {}], ["(NEU)", {}], ["(Hagen)", {}], ["(neu und alt)", {}],
-  ["FF.", {}], ["T.", {}], ["r.", {}], ["fT-", {}],
+  ["FF.", {}], ["T.", {}], ["r.", {}], ["fT-", {}], ["e- und", {}], ["A-", {}],
 ];
 
 /** Sollwerte: Glyphenfolge und Ursprünge je Wort wie die Engine; bei einem Wort zusätzlich die Striche für den Flächenvergleich.

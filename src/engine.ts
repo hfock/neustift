@@ -33,10 +33,9 @@ const LOWER = /\p{Ll}/u, UPPER = /[\p{Lu}\p{N}\uE000]/u; // Monogramm HAF zählt
 
 /**
  * Kleinbuchstaben-Form der Satzzeichen (Feinschliff): Indizes, an denen - – ( ) auf die x-Höhen-Mitte rücken.
- * - und –: der nächste Buchstabe auf jeder Seite (über höchstens ein Leerzeichen hinweg) entscheidet; sobald einer Versal oder Ziffer
- *   ist, bleibt die Versalform („T-Shirt“, „Ost-West“, „A-Z“, „10-20“), sonst reicht ein Kleinbuchstabe („e-mail“, „und – so“).
- *   Versal gewinnt, weil ein tiefer Strich neben einem Versal wie ein Unterstrich wirkt, ein Strich auf Versalhöhen-Mitte neben einer
- *   Oberlänge (t, l) aber noch trägt.
+ * - und –: der rechte Nachbar entscheidet (Kleinbuchstabe → tief: „e-mail“, „E-g“, „F-a“, „E-mail“; Versal/Ziffer → hoch: „T-Shirt“,
+ *   „Ost-West“, „A-Z“, „10-20“). Steht rechts kein Buchstabe (Wortende, Leerzeichen, Satzzeichen), entscheidet der linke Nachbar, über
+ *   höchstens ein Leerzeichen hinweg („und – so“, „e-“).
  * - „(“ richtet sich nach dem Zeichen dahinter, „)“ nach seiner „(“ (bis PAREN_REACH Zeichen zurück), damit beide gleich stehen
  *   („(Hagen)“: beide Versalform); ohne „(“ in Reichweite nach dem Zeichen davor.
  * Der Font bildet genau das per calt nach (fontdata.ts, Lookup LOWER_FORMS).
@@ -44,11 +43,9 @@ const LOWER = /\p{Ll}/u, UPPER = /[\p{Lu}\p{N}\uE000]/u; // Monogramm HAF zählt
 export function lowerForms(text: string): Set<number> {
   const cs = [...text], out = new Set<number>();
   const kind = (c?: string) => (c === undefined ? null : UPPER.test(c) ? "U" : LOWER.test(c) ? "L" : null);
-  const near = (i: number, d: number) => kind(cs[i + d] === " " ? cs[i + 2 * d] : cs[i + d]);
   cs.forEach((c, i) => {
     if (c === "-" || c === "–") {
-      const a = near(i, -1), b = near(i, 1);
-      if (a !== "U" && b !== "U" && (a === "L" || b === "L")) out.add(i);
+      if ((kind(cs[i + 1]) ?? kind(cs[i - 1] === " " ? cs[i - 2] : cs[i - 1])) === "L") out.add(i);
     } else if (c === "(") {
       if (kind(cs[i + 1]) === "L") out.add(i);
     } else if (c === ")") {

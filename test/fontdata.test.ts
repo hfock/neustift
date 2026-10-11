@@ -113,7 +113,9 @@ test("Strich mit eigener Oberkante: eigener Teil mit eigenem Band (k-Arm bis zur
 test("Feinschliff: Satzzeichen auf x-Höhen-Mitte neben Kleinbuchstaben, case nimmt es zurück", () => {
   const words = (t: string) => data.expect.find((e) => e.text === t)!.words.map((w) => w.map((g) => g.name).join(" "));
   expect(words("e-mail")).toEqual(["e hyphen.lc m a i l"]);
-  expect(words("T-Shirt")).toEqual(["T hyphen S h i r t"]); // Versal gewinnt
+  expect(words("T-Shirt")).toEqual(["T hyphen S h i r t"]); // der rechte Nachbar entscheidet
+  expect(words("E-g")[0]).toMatch(/^E hyphen\.lc g/);
+  expect(words("E-mail")).toEqual(["E hyphen.lc m a i l"]);
   expect(words("Ost-West")).toEqual(["O s t hyphen W e s t"]);
   expect(words("A-Z")).toEqual(["A hyphen Z"]);
   expect(words("10-20")).toEqual(["one zero hyphen two zero"]);
@@ -122,7 +124,7 @@ test("Feinschliff: Satzzeichen auf x-Höhen-Mitte neben Kleinbuchstaben, case ni
   expect(words("(NEU)")).toEqual(["parenleft N E U parenright"]);
   expect(words("(Hagen)")).toEqual([expect.stringMatching(/^parenleft H .* parenright$/)]); // „)“ folgt seiner „(“
   expect(words("(neu und alt)")[2]).toBe("a l t parenright.lc");
-  expect(words("F-a")[0]).toMatch(/^F hyphen/); // kein Verschachteln unter den F-Arm
+  expect(words("F-a")[0]).toMatch(/^F hyphen\.lc a/); // kein Verschachteln unter den F-Arm
   for (const n of ["hyphen.lc", "endash.lc", "parenleft.lc", "parenright.lc"]) expect(byName.get(n)!.unicodes).toEqual([]);
   expect(data.fea).toMatch(/lookup CASE \{\n  sub hyphen\.lc by hyphen;/);
   expect(data.fea).toContain("feature case {\n  lookup CASE;\n} case;");

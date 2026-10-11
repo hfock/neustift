@@ -392,7 +392,7 @@ test("Block (Hagen 2): gepinnte Verbindung bleibt in einer gesperrten Zeile", ()
   expect(Math.abs(ext(r[2]) - ext(r[0]))).toBeLessThanOrEqual(1);
 });
 
-test("Feinschliff: Satzzeichen nie näher als der Buchstabenabstand, nie im Bauch oder unter dem Arm des Nachbarn", () => {
+test("Feinschliff: Satzzeichen nie näher als der Buchstabenabstand, unter Arme und in Schrägen erlaubt", () => {
   const S = FLAECHE_1902;
   for (const t of ["E-g", "E-G", "F-a", "L-T", "H-H", "T-Shirt", "Ost-West", "e-mail", "A-Z", "10-20", "(neu)", "(NEU)", "(Hagen)", "FF.", "F.", "L'"]) {
     const v = layoutLine(t, opts()).variants[0];
@@ -403,15 +403,12 @@ test("Feinschliff: Satzzeichen nie näher als der Buchstabenabstand, nie im Bauc
       expect([t, a.char + b.char, lightGap(a.inst, a.x, b.inst, b.x, S.gap) >= S.gap - 1]).toEqual([t, a.char + b.char, true]);
     }
   }
-  // flacher Strich: rechts neben der ganzen Tinte des Nachbarn (E-Arme, T-Arm), nicht nur neben dem Mittelarm
+  // unter den T-Arm und in die Schräge (A, Z, L) wie im klassischen Satz: Kästen der Tinte überlappen waagrecht
   const right = (t: string, i: number) => {
     const v = layoutLine(t, opts()).variants[0], a = v.glyphs[i - 1], b = v.glyphs[i];
     return b.x + b.inst.prof.minX - (a.x + a.inst.prof.maxX);
   };
-  expect(right("E-", 1)).toBeGreaterThanOrEqual(S.gap - 1);
-  expect(right("T-", 1)).toBeGreaterThanOrEqual(S.gap - 1);
-  expect(right("-T", 1)).toBeGreaterThanOrEqual(S.gap - 1);
-  expect(right("T.", 1)).toBeLessThan(0); // der Punkt bleibt unter dem T-Arm (weit unter dem Strich)
+  for (const [t, i] of [["T-", 1], ["-T", 1], ["A-", 1], ["-Z", 1], ["L-", 1], ["T.", 1]] as const) expect([t, right(t, i) < 0]).toEqual([t, true]);
 });
 
 test("Feinschliff: Höhe von - – ( ) je Umgebung", () => {
@@ -422,6 +419,7 @@ test("Feinschliff: Höhe von - – ( ) je Umgebung", () => {
   };
   const S = FLAECHE_1902, x = S.xHeight / 2, cap = S.capHeight / 2;
   expect(mid("e-mail", 1)).toBe(x);
+  expect([mid("E-g", 1), mid("F-a", 1), mid("E-mail", 1), mid("e- und", 1)]).toEqual([x, x, x, x]); // rechter Nachbar; am Wortende der linke
   expect(mid("T-Shirt", 1)).toBe(cap);
   expect(mid("Ost-West", 3)).toBe(cap);
   expect(mid("A-Z", 1)).toBe(cap);
