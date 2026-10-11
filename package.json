@@ -5,9 +5,13 @@
   "scripts": {
     "dev": "bun --port=3457 ./index.html ./font.html",
     "test": "bun test",
-    "typecheck": "bunx tsc --noEmit -p .",
+    "typecheck": "tsc --noEmit -p .",
     "sheet": "bun tools/sheet.ts",
-    "font": "bun tools/export-font.ts && uv run tools/build_font.py && uv run tools/test_font.py",
+    "font": "bun tools/export-font.ts && uv run --with typing_extensions==4.15.0 tools/build_font.py && uv run --with typing_extensions==4.15.0 tools/test_font.py",
     "web": "bun run font && rm -rf web && bun build ./index.html ./font.html --outdir web --minify && cp dist/Neustift-Regular.otf dist/Neustift-Regular.woff2 OFL.txt web/"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.2",
+    "typescript": "7.0.2"
   }
 }
