@@ -4,6 +4,6 @@
   "style": "flaeche-1902",
   "controls": { "targetWidth": null, "interlock": 0.5 },
   "variant": 0,
-  "pins": { "letters": {}, "joins": {} },
+  "pins": { "letters": {}, "joins": { "2": { "type": "share", "sub": "term", "bar": false } } },
   "aspect": 2
 }

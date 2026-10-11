@@ -33,4 +33,5 @@ test("HAGEN AAD FOCK (Block): gültige Vorlage, zwei Zeilen", () => {
   const r = layoutText(p.text, { style: FLAECHE_1902, interlock: p.controls.interlock, targetWidth: p.controls.targetWidth, pins: p.pins, aspect: p.aspect ?? null });
   expect(r.warnings).toEqual([]);
   expect(r.variants[0].lines).toBe(2);
+  expect(r.variants[0].joins[2]).toEqual({ type: "share", sub: "term", bar: false }); // G im E bleibt trotz Sperren
 });
