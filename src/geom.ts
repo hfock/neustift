@@ -16,11 +16,11 @@ export const C = (x1: number, y1: number, x2: number, y2: number, x: number, y: 
 export const stroke = (x: number, y: number, ...segs: Seg[]): Stroke => ({ start: { x, y }, segs });
 export const closed = (s: Stroke): Stroke => ({ ...s, closed: true });
 
-const mv = (p: Pt, dx: number): Pt => ({ x: p.x + dx, y: p.y });
-export const shift = (s: Stroke, dx: number): Stroke => ({
+const mv = (p: Pt, dx: number, dy: number): Pt => ({ x: p.x + dx, y: p.y + dy });
+export const shift = (s: Stroke, dx: number, dy = 0): Stroke => ({
   ...s,
-  start: mv(s.start, dx),
-  segs: s.segs.map((g): Seg => (g.k === "L" ? { k: "L", p: mv(g.p, dx) } : { k: "C", c1: mv(g.c1, dx), c2: mv(g.c2, dx), p: mv(g.p, dx) })),
+  start: mv(s.start, dx, dy),
+  segs: s.segs.map((g): Seg => (g.k === "L" ? { k: "L", p: mv(g.p, dx, dy) } : { k: "C", c1: mv(g.c1, dx, dy), c2: mv(g.c2, dx, dy), p: mv(g.p, dx, dy) })),
 });
 
 const dist = (a: Pt, b: Pt) => Math.hypot(a.x - b.x, a.y - b.y);

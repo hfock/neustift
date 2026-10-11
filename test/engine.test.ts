@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import hagen from "../presets/hagen-aad-fock.json";
-import { joinOptions, layoutLine, type Options, type Pins } from "../src/engine";
+import { joinOptions, layoutLine, layoutText, type Options, type Pins } from "../src/engine";
+import { minDist } from "../src/geom";
 import { GLYPHS } from "../src/glyphs";
 import { lightGap } from "../src/rules";
 import { FLAECHE_1902 } from "../src/style";
@@ -241,4 +242,42 @@ test("Wortabstand nach der Tinte, aber nie enger als zwischen den Wortkästen (w
   expect(step("DA VOR")).toBeGreaterThanOrEqual(FLAECHE_1902.wordGap - 1); // sonst liest es sich als „DAVOR“
   expect(step("AUF ALLE")).toBeGreaterThanOrEqual(FLAECHE_1902.wordGap - 1);
   expect(Math.round(step("DIE FLÄCHE"))).toBe(FLAECHE_1902.wordGap); // senkrechte Seiten: Tinte und Kasten gleich
+});
+
+const block = (t: string, aspect: number | null) => layoutText(t, { ...opts(), aspect }).variants[0];
+const rows = (v: ReturnType<typeof block>) => {
+  const ys = [...new Set(v.glyphs.map((g) => g.y ?? 0))].sort((a, b) => b - a);
+  return ys.map((y) => v.glyphs.filter((g) => (g.y ?? 0) === y));
+};
+const ext = (gs: { x: number; inst: { prof: { minX: number; maxX: number } } }[]) =>
+  Math.max(...gs.map((g) => g.x + g.inst.prof.maxX)) - Math.min(...gs.map((g) => g.x + g.inst.prof.minX));
+
+test("Block: HAGEN AAD FOCK bei 2:1 → HAGEN / AAD FOCK, gleich breit", () => {
+  const r = rows(block("HAGEN AAD FOCK", 2));
+  expect(r.map((g) => g.map((x) => x.char).join(""))).toEqual(["HAGEN", "AADFOCK"]);
+  expect(Math.abs(ext(r[0]) - ext(r[1]))).toBeLessThanOrEqual(1);
+});
+
+test("Block: Enter erzwingt den Umbruch", () => {
+  expect(rows(block("DIE\nFLÄCHE", 1)).map((g) => g.map((x) => x.char).join(""))).toEqual(["DIE", "FLÄCHE"]);
+});
+
+test("Block: Zeilen eng, kleinste Lichtweite = Buchstabenabstand", () => {
+  const r = rows(block("HAGEN AAD FOCK", 2));
+  const ink = (gs: typeof r[0]) => gs.flatMap((g) => g.inst.ink.map((q) => ({ x: q.x + g.x, y: q.y + (g.y ?? 0) })));
+  const d = minDist(ink(r[0]), 0, ink(r[1]), 0, 1000);
+  expect(Math.abs(d - FLAECHE_1902.gap)).toBeLessThanOrEqual(1);
+});
+
+test("Block: frei ohne Enter ist eine Zeile wie layoutLine", () => {
+  for (const t of ["DIE FLÄCHE", "Hagen Spiegel", "WIENER WERKSTÄTTE"]) {
+    const a = layoutText(t, { ...opts(), aspect: null }).variants[0], b = layoutLine(t, opts()).variants[0];
+    expect(a.glyphs.map((g) => [g.char, g.x])).toEqual(b.glyphs.map((g) => [g.char, g.x]));
+  }
+});
+
+test("Block: Pins hinter dem Umbruch treffen den richtigen Buchstaben", () => {
+  const v = layoutText("AB\nCF", { ...opts(), aspect: 1, pins: { letters: { 4: { w: 330 } }, joins: {} } }).variants[0];
+  expect(v.glyphs.find((g) => g.index === 4)!.char).toBe("F");
+  expect(v.glyphs.find((g) => g.index === 4)!.inst.p.w).toBe(330);
 });
