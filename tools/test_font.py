@@ -18,6 +18,8 @@ from build_font import BUILD, DIST, outline  # noqa: E402  gleiche Strich-Streck
 OTF = DIST / "Neustift-Regular.otf"
 PUNCT = {"hyphen", "endash", "parenleft", "parenright", "period", "comma", "colon", "semicolon", "exclam", "question", "slash", "quotesingle",
          "quoteright", "quotedbl", "quotedblbase", "quotedblleft", "quotesinglbase", "quoteleft", "guillemotleft", "guillemotright"}
+ARM = {("E", "hyphen"), ("F", "hyphen"), ("L", "hyphen"), ("T", "hyphen"), ("hyphen", "T"), ("t", "hyphen")}
+SLANT = {("A", "hyphen"), ("hyphen", "Z"), ("hyphen", "two"), ("endash", "two")}
 # Feinschliff-Beispiele: Text, Mitte je Strich/Klammer (x = x-Höhen-Mitte, c = Versalhöhen-Mitte)
 FEIN = [("E-g", "x"), ("E-G", "c"), ("F-a", "x"), ("L-T", "c"), ("H-H", "c"), ("T-Shirt", "c"), ("Ost-West", "c"), ("e-mail", "x"), ("E-mail", "x"),
         ("x-Achse", "c"), ("A-Z", "c"), ("10-20", "c"), ("10–20 Uhr", "c"), ("und – so", "x"), ("(neu)", "xx"), ("(NEU)", "cc"), ("(Hagen)", "cc"),
@@ -113,6 +115,22 @@ def main() -> None:
                 pa, pb = ink(glyphset, a, xa), ink(glyphset, b, xb)
                 check(pathops.op(pa, pb, pathops.PathOp.INTERSECTION).area < 1, f"„{text}“ {a}|{b}: Tinte überlappt")
                 check(pathops.op(grow(pa, gap - 1.5), pb, pathops.PathOp.INTERSECTION).area < 1, f"„{text}“ {a}|{b}: näher als {gap}")
+        # neben Armen (E, F, L, T, t) nie unter/über ihnen: waagrecht außerhalb der Nachbartinte im Band; in Schrägen (A, Z, 2) eingerückt
+        for (a, xa), (b, xb) in zip(glyphs, glyphs[1:]):
+            pair = (a.split(".")[0], b.split(".")[0])
+            if pair in ARM or pair in SLANT:
+                pa, pb = ink(glyphset, a, xa), ink(glyphset, b, xb)
+                dash = pa if pair[0] in ("hyphen", "endash") else pb  # Nachbartinte zählt bis 0,6 Versalhöhe über und unter dem Strich (PUNCT_REACH)
+                band = pathops.Path()
+                band.moveTo(-1e5, dash.bounds[1] - 0.6 * cap)
+                band.lineTo(1e5, dash.bounds[1] - 0.6 * cap)
+                band.lineTo(1e5, dash.bounds[3] + 0.6 * cap)
+                band.lineTo(-1e5, dash.bounds[3] + 0.6 * cap)
+                band.close()
+                pa, pb = (pa, pathops.op(pb, band, pathops.PathOp.INTERSECTION)) if dash is pa else (pathops.op(pa, band, pathops.PathOp.INTERSECTION), pb)
+                light = pb.bounds[0] - pa.bounds[2]
+                ok = light >= gap - data["info"]["stroke"] / 2 - 1 if pair in ARM else light < 0  # Toleranz: Gehrungsspitzen kennt die Engine-Tinte nicht
+                check(ok, f"„{text}“ {a}|{b}: Lücke der Kästen {light:.0f} ({'Arm' if pair in ARM else 'Schräge'})")
         got = [round((lambda b: (b[1] + b[3]) / 2)(ink(glyphset, n).bounds)) for n, _ in glyphs if n.split(".")[0] in ("hyphen", "endash", "parenleft", "parenright")]
         check(got == [{"x": xh // 2, "c": cap // 2}[m] for m in mids], f"„{text}“: Mitten {got} statt {mids}")
         cased = [n for w in shape(font, text, {"case": True}) for n, _ in w]

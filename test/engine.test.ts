@@ -3,7 +3,7 @@ import hagen from "../presets/hagen-aad-fock.json";
 import { joinOptions, layoutLine, layoutText, type Options, type Pins } from "../src/engine";
 import { minDist } from "../src/geom";
 import { GLYPHS, cutTop } from "../src/glyphs";
-import { lightGap } from "../src/rules";
+import { PUNCT_REACH, lightGap } from "../src/rules";
 import { FLAECHE_1902 } from "../src/style";
 
 const opts = (o: Partial<Options> = {}): Options => ({ style: FLAECHE_1902, interlock: 0.5, targetWidth: null, pins: { letters: {}, joins: {} }, ...o });
@@ -392,7 +392,7 @@ test("Block (Hagen 2): gepinnte Verbindung bleibt in einer gesperrten Zeile", ()
   expect(Math.abs(ext(r[2]) - ext(r[0]))).toBeLessThanOrEqual(1);
 });
 
-test("Feinschliff: Satzzeichen nie näher als der Buchstabenabstand, unter Arme und in Schrägen erlaubt", () => {
+test("Feinschliff: Satzzeichen nie näher als der Buchstabenabstand, in Schrägen eingerückt, nie unter Arme", () => {
   const S = FLAECHE_1902;
   for (const t of ["E-g", "E-G", "F-a", "L-T", "H-H", "T-Shirt", "Ost-West", "e-mail", "A-Z", "10-20", "(neu)", "(NEU)", "(Hagen)", "FF.", "F.", "L'"]) {
     const v = layoutLine(t, opts()).variants[0];
@@ -403,12 +403,21 @@ test("Feinschliff: Satzzeichen nie näher als der Buchstabenabstand, unter Arme 
       expect([t, a.char + b.char, lightGap(a.inst, a.x, b.inst, b.x, S.gap) >= S.gap - 1]).toEqual([t, a.char + b.char, true]);
     }
   }
-  // unter den T-Arm und in die Schräge (A, Z, L) wie im klassischen Satz: Kästen der Tinte überlappen waagrecht
+  // in die Schräge (A, Z, 2, V, Y, K; das W hat senkrechte Außenstriche) wie im klassischen Satz: Kästen der Tinte überlappen waagrecht; der Punkt unter dem fernen T-Arm
   const right = (t: string, i: number) => {
     const v = layoutLine(t, opts()).variants[0], a = v.glyphs[i - 1], b = v.glyphs[i];
     return b.x + b.inst.prof.minX - (a.x + a.inst.prof.maxX);
   };
-  for (const [t, i] of [["T-", 1], ["-T", 1], ["A-", 1], ["-Z", 1], ["L-", 1], ["T.", 1]] as const) expect([t, right(t, i) < 0]).toEqual([t, true]);
+  for (const [t, i] of [["A-", 1], ["-Z", 1], ["-2", 1], ["V-", 1], ["Y-", 1], ["K-", 1], ["T.", 1]] as const) expect([t, right(t, i) < 0]).toEqual([t, true]);
+  // neben waagrechten Armen bleibt der Strich aus deren Tinte heraus: „E-g“, „L-T“, „T-Shirt“, „F-a“, „E-G“, „t-“
+  // (Nachbartinte bis PUNCT_REACH Versalhöhe über und unter dem Strich: beim tiefen Strich in „F-a“ zählt der Mittelarm, nicht der ferne obere)
+  const armGap = (t: string, i: number) => {
+    const v = layoutLine(t, opts()).variants[0], a = v.glyphs[i - 1], b = v.glyphs[i], dash = /[-–]/.test(a.char) ? a : b;
+    const ys = dash.inst.ink.map((q) => q.y), lo = Math.min(...ys) - PUNCT_REACH * S.capHeight, hi = Math.max(...ys) + PUNCT_REACH * S.capHeight;
+    const xs = (g: typeof a) => g.inst.ink.filter((q) => g === dash || (q.y >= lo && q.y <= hi)).map((q) => q.x + g.x);
+    return Math.min(...xs(b)) - Math.max(...xs(a));
+  };
+  for (const [t, i] of [["E-", 1], ["E-g", 1], ["F-a", 1], ["L-", 1], ["-T", 1], ["T-", 1], ["t-", 1]] as const) expect([t, armGap(t, i) >= S.gap - 1]).toEqual([t, true]);
 });
 
 test("Feinschliff: Höhe von - – ( ) je Umgebung", () => {
