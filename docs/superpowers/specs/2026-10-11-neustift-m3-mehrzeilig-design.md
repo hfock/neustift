@@ -6,7 +6,7 @@
 | Projekt | HabUndGutFont (`~/Projekte/HabUndGutFont`), Schrift „Neustift“ |
 | Grundlage | Spec M1 `2026-10-06-kairos-font-design.md` (§3 Zielform, §4 M3) |
 | Umfang | App und Engine; der Font bleibt einzeilig |
-| Status | Entwurf zur Durchsicht |
+| Status | freigegeben (Hagen, 2026-10-11) |
 
 ## 1. Ziel
 
