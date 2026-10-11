@@ -1,6 +1,6 @@
 export type Pt = { x: number; y: number };
 export type Seg = { k: "L"; p: Pt } | { k: "C"; c1: Pt; c2: Pt; p: Pt };
-export type Stroke = { start: Pt; segs: Seg[]; closed?: boolean; top?: number }; // top: eigene Beschnitt-Oberkante dieses Strichs (k-Arm auf x-Höhe)
+export type Stroke = { start: Pt; segs: Seg[]; closed?: boolean; top?: number; line?: number }; // top: eigene Beschnitt-Oberkante dieses Strichs (k-Arm auf x-Höhe); line: Grundlinie seiner Zeile im Block (Balken)
 /** Je Höhenstreifen (BIN Einheiten) linkester und rechtester Tintenrand; NaN = keine Tinte. */
 export type Profile = { left: Float64Array; right: Float64Array; minX: number; maxX: number };
 

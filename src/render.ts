@@ -40,7 +40,7 @@ export function svgString(l: Layout, s: Style, o: RenderOpts): string {
     // Verbindungs-Pins: Raute unter der Grenze zwischen zwei Buchstaben
     for (const i of o.pinnedJoins ?? []) {
       const a = l.glyphs.find((g) => g.index === i), b = l.glyphs.find((g) => g.index === i + 1);
-      if (!a || !b || a.y !== b.y) continue;
+      if (!a || !b) continue;
       const cx = r1((a.x + a.inst.prof.maxX + b.x + b.inst.prof.minX) / 2), cy = r1((a.y ?? 0) - m / 2);
       out.push(`<path class="pinj" d="M${cx} ${cy - 9}L${cx + 9} ${cy}L${cx} ${cy + 9}L${cx - 9} ${cy}Z" fill="#b03a2e" stroke="none"/>`);
     }
@@ -48,9 +48,6 @@ export function svgString(l: Layout, s: Style, o: RenderOpts): string {
   }
   out.push(`<g id="ink" ${flip} fill="none" stroke="${o.ink}" stroke-width="${s.stroke}" stroke-linecap="butt" stroke-linejoin="miter" stroke-miterlimit="4">`);
   // Zeilenband in Schriftkoordinaten: schräge Füße und Spitzen enden waagrecht an Grund- und Oberlinie
-  // je Zeile ein Band; die Kennung hängt an den Grundlinien (die Wortmarke im Seitenkopf trägt ihr eigenes einzeiliges Band)
-  const ys = [...new Set(l.glyphs.map((g) => r1(g.y ?? 0)))], band = ["kairos-zeile", ...ys.filter((y) => y).map((y) => Math.round(-y * 10))].join("-");
-  out.push(`<clipPath id="${band}">${ys.map((y) => `<rect x="-10000000" y="${y}" width="20000000" height="${H}"/>`).join("")}</clipPath><g clip-path="url(#${band})">`);
   const clips = new Set<string>();
   /** Beschnitt-Rechteck von −d bis top; die Kennung hängt nur an den Höhen, so stören sich auch mehrere eingebettete SVGs nicht. */
   const clipId = (d: number, top: number) => {
@@ -72,9 +69,15 @@ export function svgString(l: Layout, s: Style, o: RenderOpts): string {
     });
     out.push(`<g data-i="${g.index}" transform="${at(g)}"${clip ? ` clip-path="url(#${clip})"` : ""}>${paths.join("")}</g>`);
   };
-  for (const g of l.glyphs) if (!g.inst.def.desc) glyph(g); // Zeichen mit Unterlänge liegen außerhalb des Bands (unten)
-  for (const e of l.extras) out.push(`<path d="${pathData(e)}"/>`);
-  out.push(`</g>`);
+  // je Zeile ein eigenes Band: greifen Zeilen ineinander, schnitte ein gemeinsames die Füße der oberen nicht mehr.
+  // Kennung nach Grundlinie (gleiche Kennung = gleicher Inhalt, auch neben der Wortmarke im Seitenkopf); erste Zeile wie einzeilig
+  for (const y of new Set(l.glyphs.map((g) => r1(g.y ?? 0)))) {
+    const band = y ? `kairos-zeile-${Math.round(-y * 10)}` : "kairos-zeile";
+    out.push(`<clipPath id="${band}"><rect x="-10000000" y="${y}" width="20000000" height="${H}"/></clipPath><g clip-path="url(#${band})">`);
+    for (const g of l.glyphs) if (!g.inst.def.desc && r1(g.y ?? 0) === y) glyph(g); // Zeichen mit Unterlänge liegen außerhalb des Bands (unten)
+    for (const e of l.extras) if (r1(e.line ?? 0) === y) out.push(`<path d="${pathData(e)}"/>`);
+    out.push(`</g>`);
+  }
   for (const g of l.glyphs) if (g.inst.def.desc) glyph(g); // Komma, tiefe Anführungszeichen ohne Beschnitt; y bis zur x-Höhe
   out.push(`</g></svg>`);
   return out.join("");

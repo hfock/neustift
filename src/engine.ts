@@ -316,7 +316,7 @@ function stack(rows: Layout[], score: number, s: Style): Layout {
     const r = { ...row, glyphs: row.glyphs.map((g) => ({ ...g, x: g.x - row.minX })) }; // linke Kanten bündig
     if (prev) y -= lineDrop(prev.glyphs, r.glyphs, s);
     glyphs.push(...r.glyphs.map((g) => ({ ...g, y })));
-    extras.push(...r.extras.map((e) => shift(e, -row.minX, y)));
+    extras.push(...r.extras.map((e) => ({ ...shift(e, -row.minX, y), line: y }))); // Zeile merken: der Renderer schneidet je Zeile
     Object.assign(joins, r.joins);
     prev = r;
   }
@@ -436,7 +436,6 @@ export function layoutText(text: string, o: Options & { aspect: number | null })
     .slice(0, count);
   const best = blocks[0], t = o.targetWidth;
   const rowWidths = [...new Set(best.glyphs.map((g) => g.y))].map((y) => extent(best.glyphs.filter((g) => g.y === y)).width);
-  // nur mit gesetzter Zielbreite: ohne sie hat niemand eine Breite verlangt
-  if (t && (Math.abs(best.width - t) > 2 || rowWidths.some((rw) => best.width - rw > 2))) warn.add(ZIEL);
+  if ((t && Math.abs(best.width - t) > 2) || rowWidths.some((rw) => best.width - rw > 2)) warn.add(ZIEL);
   return { variants: blocks, warnings: [...warn] };
 }

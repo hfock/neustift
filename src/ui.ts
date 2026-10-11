@@ -99,6 +99,18 @@ function restore(from: string[], to: string[]) {
   syncControls();
 }
 
+// Neu setzen erst nach einer Tipp-Pause: lange Blöcke brauchen bis ~2 s je Durchlauf.
+// flush() übernimmt eine wartende Eingabe sofort – vor Rückgängig, Klick und Ziehen, sonst gälten alte Indizes
+let typing = 0;
+function flush() {
+  if (!typing) return;
+  clearTimeout(typing);
+  typing = 0;
+  update();
+  syncControls();
+  commit();
+}
+
 function update() {
   const res = layoutText(state.text, { style: state.style, interlock: state.interlock, targetWidth: state.target, pins: state.pins, aspect: state.aspect });
   variants = res.variants;
@@ -167,6 +179,7 @@ function fontPoint(e: PointerEvent) {
 
 /** Griff ziehen: Wert wird als Pin festgehalten, Engine rechnet live neu. */
 function drag(e: PointerEvent, start: Placed, kind: HandleKind) {
+  if (typing) return flush(); // Griffe gehören zum alten Text: erst neu setzen
   e.preventDefault();
   e.stopPropagation();
   const i = start.index, def = start.inst.def, s = state.style;
@@ -283,6 +296,7 @@ function syncControls() {
 // --- Bedienung -------------------------------------------------------------
 
 $("preview").addEventListener("click", (e) => {
+  if (typing) return flush(); // Klick traf den alten Text: erst neu setzen, dann wählen
   if ((e.target as Element).closest(".handle")) return; // Griff: Auswahl bleibt
   const hit = (e.target as Element).closest("[data-i]");
   state.selected = hit ? Number(hit.getAttribute("data-i")) : null;
@@ -291,8 +305,6 @@ $("preview").addEventListener("click", (e) => {
   save(KEY, state);
 });
 
-// Neu setzen erst nach einer Tipp-Pause: lange Blöcke brauchen bis ~2 s je Durchlauf
-let typing = 0;
 $("text").addEventListener("input", () => {
   state.text = $("text").value.normalize("NFC"); // „Ä“ als A + Trema (NFD) würde sonst zerfallen
   state.pins = { letters: {}, joins: {} }; // Positionen verschieben sich beim Tippen
@@ -301,11 +313,7 @@ $("text").addEventListener("input", () => {
   state.overlay = null;
   state.showOverlay = false;
   clearTimeout(typing);
-  typing = setTimeout(() => {
-    update();
-    syncControls();
-    commit();
-  }, 200) as unknown as number;
+  typing = setTimeout(flush, 200) as unknown as number;
 });
 
 $("aspect").addEventListener("input", () => {
@@ -377,6 +385,7 @@ $("resetLetter").addEventListener("click", () => {
 addEventListener("keydown", (e) => {
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
     e.preventDefault();
+    flush(); // getippter Text wird erst ein Schritt, dann geht Rückgängig genau einen zurück
     if (e.shiftKey) restore(future, past);
     else restore(past, future);
     return;

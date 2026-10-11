@@ -330,8 +330,10 @@ test("Block: langer Text (60 Wörter) in unter 1 s", () => {
   expect(v.lines).toBeLessThanOrEqual(6);
 });
 
-test("Block: ohne Zielbreite kein Hinweis „Zielbreite nicht erreichbar“, mit unerreichbarer schon", () => {
+test("Block: Hinweis „Zielbreite nicht erreichbar“, wenn eine Zeile nicht auf Blockbreite kommt (Spec 4.3), einzeilig frei nicht", () => {
   const ZIEL = "Zielbreite nicht erreichbar – nächstbeste Breite gezeigt";
-  expect(layoutText("A\nB\nCCCCC", { ...opts(), aspect: null }).warnings).not.toContain(ZIEL);
+  expect(layoutText("A\nB\nCCCCC", { ...opts(), aspect: null }).warnings).toContain(ZIEL);
+  expect(layoutText("DIE FLÄCHE", { ...opts(), aspect: 1 }).warnings).toContain(ZIEL);
   expect(layoutText("A\nB\nCCCCC", { ...opts({ targetWidth: 100 }), aspect: null }).warnings).toContain(ZIEL);
+  expect(layoutText("DIE FLÄCHE", { ...opts(), aspect: null }).warnings).not.toContain(ZIEL);
 });
