@@ -28,10 +28,10 @@
         border-bottom: 1px solid var(--ink);
         border-radius: 0;
       }
-      #text:focus-visible { outline: none; border-bottom: 2px solid var(--gold); }
+      #text:focus-visible { outline: none; border-bottom: 2px solid var(--gold-ink); }
       body:has(#dlig:checked) #text { font-variant-ligatures: common-ligatures discretionary-ligatures contextual; }
       #status { margin-top: 8px; }
-      #status:empty { display: none; }
+      #status:empty { min-height: 0; } /* Live-Region bleibt im Baum, nimmt aber keinen Platz */
 
       .sub { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 24px; margin-bottom: 24px; }
       #charset section + section { margin-top: 28px; }

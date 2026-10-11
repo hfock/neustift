@@ -28,7 +28,7 @@ body {
   accent-color: var(--ink);
 }
 a { color: inherit; text-underline-offset: 3px; text-decoration-thickness: 1px; }
-:focus-visible { outline: 2px solid var(--gold-ink); outline-offset: 2px; }
+:focus-visible, .btn:has(:focus-visible) { outline: 2px solid var(--gold-ink); outline-offset: 2px; } /* .btn: Label um ein verstecktes Dateifeld */
 .vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
 /* Kopf: Schriftzug, Navigation, darunter das Band aus Quadraten */
