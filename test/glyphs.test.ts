@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { inkPoints, minDist, type Stroke } from "../src/geom";
-import { GLYPHS, PLACEHOLDER, cutTop, defaults, inRange, type GlyphDef, type Params } from "../src/glyphs";
+import { GLYPHS, PLACEHOLDER, cutTop, defaults, descOf, inRange, type GlyphDef, type Params } from "../src/glyphs";
 import { barLink, instance } from "../src/rules";
 import { FLAECHE_1902 as S } from "../src/style";
 
@@ -10,7 +10,7 @@ const MARKS = [...".,:;!?-–()/&'’\"„“‚‘«»€%@#+=*§…"]; // Spec
 const HAF = "\uE000";
 const LOWER = [..."abcdefghijklmnopqrstuvwxyzäöüß"];
 const ink = (st: Stroke[]) => st.flatMap((x) => inkPoints(x, S.stroke / 2));
-const kinds = (c: string, p: Partial<Params> = {}) =>
+const kinds = (c: string, p: Params = {}) =>
   GLYPHS[c].docks({ ...defaults(GLYPHS[c]), ...p }, S).map((d) => d.kind + ("side" in d ? ":" + d.side : ""));
 
 /** Alle Kombinationen aus Minimal-, Start- und Maximalwert jedes Reglers. */
@@ -39,7 +39,7 @@ test("Tinte bleibt endlich und im Buchstabenfeld (Höhe, x ≥ linker Bezug)", (
   const bad = new Set<string>();
   for (const g of [...[...ALL, ...LOWER, ...DIGITS, ...MARKS, HAF].map((c) => GLYPHS[c]), PLACEHOLDER])
     for (const p of variants(g)) {
-      const top = S.capHeight * (p.h ?? 1), bottom = -(g.desc ?? 0); // Satzzeichen ohne Höhenregler: volle Höhe; Komma mit Unterlänge
+      const top = S.capHeight * (p.h ?? 1), bottom = -descOf({ def: g, p }); // Satzzeichen ohne Höhenregler: volle Höhe; Komma und Kleinbuchstaben-Klammer mit Unterlänge
       const stretched = p.tail < (g.params.tail?.def ?? -Infinity); // nach links verlängerte Unterlänge (g, j, y): ragt gewollt über den linken Bezug
       for (const q of ink(g.draw(p, S))) {
         // Füße und Spitzen reichen bis eine Strichstärke über Grund- und Oberkante hinaus, der Renderer schneidet dort waagrecht ab;
@@ -251,7 +251,7 @@ test("f und t: Querstrich ab x = 0, Stamm bei 50, Querstrich ohne Verlängerung 
 
 test("Regel-Haken der Kleinbuchstaben: Wert rein, Regler und Andockstelle raus", () => {
   const d = (c: string) => defaults(GLYPHS[c]);
-  const dock = (c: string, p: Params) => GLYPHS[c].docks(p, S)[0] as Record<string, number>;
+  const dock = (c: string, p: Params) => GLYPHS[c].docks(p, S)[0] as unknown as Record<string, number>;
   // c: Bogenende bis x, nie kürzer als ohne Verbindung
   const c = GLYPHS.c.close!(d("c"), 200);
   expect(c).toEqual({ ...d("c"), term: 40 });

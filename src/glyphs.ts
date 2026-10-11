@@ -20,6 +20,7 @@ export interface GlyphDef {
   docks(p: Params, s: Style): Dock[];
   adjust?: { left?: number; right?: number }; // Abstandskorrektur je Seite (Einheiten)
   desc?: number; // Unterlänge: Tinte reicht bis −desc unter die Grundlinie (Komma, tiefe Anführungszeichen)
+  descFor?(p: Params): number; // Unterlänge je nach Reglern (Klammern: nur die Kleinbuchstaben-Form hängt unter die Grundlinie)
   cover?(p: Params, end: number): Params; // Mittelarm bis end, oberer Arm entsprechend (Verschachteln)
   reach?(p: Params, end: number): Params; // Fuß bis end (Unterfahren)
   close?(p: Params, x: number): Params; // Bogenende bis x (Strich teilen)
@@ -29,7 +30,11 @@ export interface GlyphDef {
   extend?(p: Params, x: number): Params; // Querstrich bis x (f, t)
   tailTo?(p: Params, x: number): Params; // Schwanz der Unterlänge bis x nach links (g, j, y)
   top?(s: Style): number; // eigene Beschnitt-Oberkante (v, w, x, y: x-Höhe)
+  noTuck?: "left" | "right"; // diese Seite gilt für Satzzeichen als Arm: nicht einrücken (K, k: der Strich in der Kerbe vor dem Stamm liest sich als Querstrich)
 }
+
+/** Unterlänge eines Buchstabens mit diesen Reglern (0 = keine). */
+export const descOf = (i: { def: GlyphDef; p: Params }) => i.def.descFor?.(i.p) ?? i.def.desc ?? 0;
 
 /** Oberkante, an der Renderer und Font die Tinte abschneiden: eigene Oberkante, sonst Versalhöhe × Höhenregler. */
 export const cutTop = (def: GlyphDef, p: Params, s: Style) => def.top?.(s) ?? s.capHeight * (p.h ?? 1);
@@ -176,6 +181,7 @@ const glyphI: GlyphDef = {
 
 const glyphK: GlyphDef = {
   char: "K",
+  noTuck: "right",
   params: { h, w: R(180, 230, 280) },
   draw(p, s) {
     const j = s.barHigh * p.h; // Arme treffen sich auf der oberen Balkenlinie
@@ -580,22 +586,34 @@ const glyphQuestion: GlyphDef = {
   docks: () => [],
 };
 
-const glyphHyphen: GlyphDef = { char: "-", params: fixed, draw: (_p, s) => [stroke(0, mid(s), L(140, mid(s)))], docks: () => [] };
+/** Form für Kleinbuchstaben (Feinschliff): 0 = auf Versalhöhen-Mitte wie bisher, 1 = auf x-Höhen-Mitte. Die Engine wählt sie aus den Nachbarn (lowerForms), nie stufenlos. */
+const lc = R(0, 0, 1);
+const lowMid = (p: Params, s: Style) => (p.lc > 0.5 ? s.xHeight / 2 : mid(s));
 
-const glyphEndash: GlyphDef = { char: "–", params: fixed, draw: (_p, s) => [stroke(0, mid(s), L(280, mid(s)))], docks: () => [] };
+const glyphHyphen: GlyphDef = { char: "-", params: { lc }, draw: (p, s) => [stroke(0, lowMid(p, s), L(140, lowMid(p, s)))], docks: () => [] };
 
-/** Klammer: flacher Bogen über die ganze Höhe; die Enden laufen waagrecht in Ober- und Grundlinie aus, der stumpfe Schnitt steht senkrecht. */
-function paren(s: Style, w: number): Stroke {
-  const H = s.capHeight, m = H / 2, t = H - s.stroke / 2, b = s.stroke / 2;
+const glyphEndash: GlyphDef = { char: "–", params: { lc }, draw: (p, s) => [stroke(0, lowMid(p, s), L(280, lowMid(p, s)))], docks: () => [] };
+
+/** Klammer: flacher Bogen über die ganze Höhe; die Enden laufen waagrecht in Ober- und Grundlinie aus, der stumpfe Schnitt steht senkrecht.
+ *  Kleinbuchstaben-Form: um die x-Höhen-Mitte, je eine Unterlänge (130) über und unter die x-Höhe; Breite im gleichen Verhältnis. */
+function paren(p: Params, s: Style): Stroke {
+  const [y0, y1] = p.lc > 0.5 ? [-PAREN_DESC, s.xHeight + PAREN_DESC] : [0, s.capHeight], H = y1 - y0, w = PAREN_W * (H / s.capHeight);
+  const m = (y0 + y1) / 2, t = y1 - s.stroke / 2, b = y0 + s.stroke / 2;
   return stroke(w, t, C(0.35 * w, t, 0, m + 0.3 * H, 0, m), C(0, m - 0.3 * H, 0.35 * w, b, w, b));
 }
+const PAREN_W = 110, PAREN_DESC = 130; // Unterlänge wie g, j, y
 
-const glyphParenLeft: GlyphDef = { char: "(", params: fixed, draw: (_p, s) => [paren(s, 110)], docks: () => [] };
+const parenDesc = (p: Params) => (p.lc > 0.5 ? PAREN_DESC : 0);
+const glyphParenLeft: GlyphDef = { char: "(", params: { lc }, descFor: parenDesc, draw: (p, s) => [paren(p, s)], docks: () => [] };
 
 const glyphParenRight: GlyphDef = {
   char: ")",
-  params: fixed,
-  draw: (_p, s) => [mapPts(paren(s, 110), (q) => ({ x: 110 - q.x, y: q.y }))],
+  params: { lc },
+  descFor: parenDesc,
+  draw: (p, s) => {
+    const st = paren(p, s), w = st.start.x;
+    return [mapPts(st, (q) => ({ x: w - q.x, y: q.y }))];
+  },
   docks: () => [],
 };
 
@@ -925,6 +943,7 @@ const glyph_j: GlyphDef = {
 
 const glyph_k: GlyphDef = {
   char: "k",
+  noTuck: "right",
   params: { w: R(130, 160, 200) },
   draw(p, s) {
     // Arm und Bein treffen sich auf halber x-Höhe am Stamm; der Arm ragt schräg knapp über die x-Höhe und wird dort waagrecht beschnitten (wie der K-Arm oben)

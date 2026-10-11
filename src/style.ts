@@ -25,7 +25,7 @@ export const FLAECHE_1902: Style = {
   barLow: 154,
   xHeight: 300,
   gap: 56,
-  wordGap: 136,
+  wordGap: 206, // Font: Leerzeichen 150 + Seitenabstände 56 (Feinschliff, vorher 136 = 80 + 56)
   clearance: 36,
   armGap: 20,
   nestGap: 152,

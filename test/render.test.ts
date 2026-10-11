@@ -40,9 +40,9 @@ test("Komma mit Unterlänge: liegt außerhalb des Zeilenbands, der Rahmen reicht
   expect(band).toBeGreaterThan(0);
 });
 
-test("Satzzeichen unter dem F-Arm behalten ihre Form: „F/“ ohne eigenen Beschnitt", () => {
+test("Satzzeichen verschachteln nicht und behalten ihre Form: „F/“ ohne eigenen Beschnitt", () => {
   const fs = layoutLine("F/", { style: S, interlock: 0.5, targetWidth: null, pins: { letters: {}, joins: {} } }).variants[0];
-  expect(fs.joins[0].type).toBe("nest");
+  expect(fs.joins[0].type).toBe("none"); // Feinschliff: nie unter den F-Arm
   expect(fs.glyphs[1].inst.p.h).toBeUndefined();
   expect(svgString(fs, S, { ink: "#000", paper: null })).not.toContain("kairos-h");
 });
@@ -88,7 +88,7 @@ test("Zeilenband reicht auch für sehr lange Zeilen", () => {
 /** Layout von Hand: eine Glyphe bei x = 0. */
 function one(def: GlyphDef): Layout {
   const inst = instance(def, {}, S);
-  return { glyphs: [{ index: 0, char: def.char, inst, x: 0 }], extras: [], joins: {}, minX: inst.prof.minX, maxX: inst.prof.maxX, width: inst.prof.maxX - inst.prof.minX, score: 0 };
+  return { glyphs: [{ index: 0, char: def.char, inst, x: 0 }], extras: [], joins: {}, minX: inst.prof.minX, maxX: inst.prof.maxX, width: inst.prof.maxX - inst.prof.minX, score: 0, height: S.capHeight, lines: 1 };
 }
 
 test("eigene Oberkante (top): Tinte darüber wird dort abgeschnitten, auch bei Unterlänge zwischen −desc und top", () => {

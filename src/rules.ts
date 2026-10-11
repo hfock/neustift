@@ -1,4 +1,4 @@
-import { BIN, L, gapOffset, inkPoints, minDist, profile, stroke, type Profile, type Pt, type Stroke } from "./geom";
+import { BIN, L, gapOffset, inkPoints, minDist, profile, sample, stroke, type Profile, type Pt, type Stroke } from "./geom";
 import { inRange, type Dock, type GlyphDef, type Params } from "./glyphs";
 import type { Style } from "./style";
 
@@ -20,12 +20,26 @@ export function dock<K extends Dock["kind"]>(i: Inst, kind: K, side?: "left" | "
 }
 
 /** Abstand für „keine Verbindung“: kleinste waagrechte Lichtweite = Buchstabenabstand (+ Seitenkorrektur).
+ *  Satzzeichen (Feinschliff): nie näher als der Buchstabenabstand an irgendeine Nachbartinte (schräg gemessen), nie überlappend.
+ *  Flache Zeichen rücken nur in Schrägen ein (A, V, W, Z, 2: „A-Z“, „10-20“); neben Stamm, Arm oder Bogen bleiben sie aus der Tinte
+ *  heraus, die der Nachbar in einer halben Versalhöhe um das Zeichen zeichnet (E-, F-, L-, T-Arme). Der Punkt bleibt unter dem T-Arm (zu fern).
  *  Ein loser oberer Strich (f-Haken) zählt nur so kurz, wie trimTop ihn kürzen darf – gepinnte Regler (lock) bleiben; die Engine kürzt ihn danach
  *  vor dem Nachbarn. Reicht das Kürzen nicht (Bogen des S unter dem Hakenband), zählt der ganze Haken.
  *  Was das Profil nicht sieht (Unterlängen unter 0, Punkte neben Querstrichen), schiebt den Nachbarn nach rechts, bis armGap Luft bleibt. */
 export function spacing(l: Inst, r: Inst, s: Style, minY = 0, lock?: Params): number {
   const gap = s.gap + (l.def.adjust?.right ?? 0) + (r.def.adjust?.left ?? 0);
   let dx = gapOffset(l.prof, r.prof, gap, minY);
+  if (isPunct(l.def) || isPunct(r.def)) {
+    // flaches Zeichen neben Stamm, Arm oder Bogen: nie unter oder über dessen Tinte (eine halbe Versalhöhe um das Zeichen) – „E-g“, „L-T“, „T-Shirt“;
+    // neben einer Schräge (A, V, W, Z, 2 …) darf es einrücken („A-Z“, „10-20“). Überall: schräg gemessen nie näher als gap
+    const ALL: [number, number] = [-Infinity, Infinity];
+    const band = (p: Inst, n: Inst, side: "left" | "right") => { const b = inkBand(p, s); return b && !tuckable(p, n, side, b) ? b : null; };
+    const bl = band(l, r, "left"), br = band(r, l, "right"); // Band des Zeichens gegen die Tinte des Nachbarn
+    if (bl) dx = Math.max(dx, s.gap - (inkMin(r, bl) - inkMax(l, ALL)));
+    if (br) dx = Math.max(dx, s.gap - (inkMin(r, ALL) - inkMax(l, br)));
+    for (let i = 0, g; i < 20 && (g = lightGap(l, 0, r, dx, s.gap + 1)) < s.gap; i++) dx += s.gap + 0.5 - g; // halbe Einheit Reserve gegen das Runden im Font
+    return dx;
+  }
   if (l.def.loose) {
     const d = gapOffset(instance(l.def, { ...l.def.trimTop!(l.p, -Infinity), ...lock }, s).prof, r.prof, gap, minY), t = trimTop(l, 0, r, d, s, lock);
     if (!collides(t, 0, r, d, s)) return d;
@@ -34,9 +48,60 @@ export function spacing(l: Inst, r: Inst, s: Style, minY = 0, lock?: Params): nu
   return dx;
 }
 
-/** Alle an dieser Grenze möglichen Verbindungen (Balken-Variante kommt in der Engine dazu). */
+/** Satz- und Sonderzeichen (alles außer Buchstaben und Ziffern; das Monogramm U+E000 zählt als Buchstabe). */
+export const isPunct = (def: GlyphDef) => /[\p{P}\p{S}]/u.test(def.char);
+
+/** So weit (Anteil der Versalhöhe) über und unter einem flachen Satzzeichen zählt die Tinte des Nachbarn als seine Kante. */
+export const PUNCT_REACH = 0.6; // reicht vom tiefen Strich (150) bis über den F-Mittelarm (546), bleibt unter dem T-Arm für den Punkt
+/** Höhenband eines flachen Satzzeichens (Tinte niedriger als PUNCT_REACH × Versalhöhe: - – . , : ' " « » + = …), um PUNCT_REACH erweitert;
+ *  sonst null. Hohe Zeichen (Klammern, /, !) haben keinen Bauch, in den ein Nachbar ragt: für sie reicht das Profil. */
+const inkBand = (i: Inst, s: Style): [number, number] | null => {
+  const [lo, hi] = yRange(i), k = PUNCT_REACH * s.capHeight;
+  return isPunct(i.def) && hi - lo < k ? [lo - k, hi + k] : null;
+};
+const yRange = (i: Inst): [number, number] => i.ink.reduce(([lo, hi], q) => [Math.min(lo, q.y), Math.max(hi, q.y)], [Infinity, -Infinity]);
+const inkMax = (i: Inst, [lo, hi]: [number, number]) => i.ink.reduce((m, q) => (q.y >= lo && q.y <= hi && q.x > m ? q.x : m), -Infinity);
+const inkMin = (i: Inst, [lo, hi]: [number, number]) => i.ink.reduce((m, q) => (q.y >= lo && q.y <= hi && q.x < m ? q.x : m), Infinity);
+
+/**
+ * Darf das flache Satzzeichen p in die Tinte des Nachbarn n einrücken (side: die p zugewandte Seite von n)? Ja, wenn
+ * - die zugewandte Seite auf Höhe von p eine gerade Schräge ist (Mittellinie 7°–75° gegen die Senkrechte; A-Beine stehen nur 14° schräg): „A-Z“, „10-20“;
+ * - oder über/unter p (im Band) kein gerader, waagrechter Strich (Arm, Balken, Fuß, Querstrich) über diese Seite hinausragt: Y mit schrägen Armen. K und k sind per noTuck ausgenommen.
+ * Nein bei Stamm/Bogen mit waagrechtem Arm darüber oder darunter (E, F, L, T, t, f, r): dort bleibt das Zeichen aus der Tinte des Arms.
+ */
+function tuckable(p: Inst, n: Inst, side: "left" | "right", band: [number, number]): boolean {
+  if (isPunct(n.def) || n.def.noTuck === side) return false; // Kerbe wie X, aber vor einem Stamm: per Glyphe, Geometrie trennt K und X nicht
+  const [lo, hi] = yRange(p), out = side === "right" ? 1 : -1; // Richtung zum Satzzeichen
+  let best: { x: number; sin: number; line: boolean } | null = null;
+  for (const st of n.strokes) {
+    let cur = st.start;
+    for (const g of st.segs) {
+      const c = sample({ start: cur, segs: [g] }); // je Abschnitt: gerade Schräge (L) oder Bogen (C)
+      for (let i = 0; i < c.length; i++) {
+        if (c[i].y < lo || c[i].y > hi) continue;
+        const a = c[Math.max(0, i - 1)], b = c[Math.min(c.length - 1, i + 1)], len = Math.hypot(b.x - a.x, b.y - a.y);
+        if (len && (!best || out * (c[i].x - best.x) > 0)) best = { x: c[i].x, sin: Math.abs(b.x - a.x) / len, line: g.k === "L" };
+      }
+      cur = g.p;
+    }
+  }
+  if (best && best.line && best.sin > 0.12 && best.sin < 0.97) return true; // gerade Schräge; ein S-Bogen zählt nicht
+  const edge = best ? best.x : -out * Infinity;
+  for (const st of n.strokes) {
+    const c = sample(st);
+    for (let i = 1; i < c.length; i++) {
+      const dx = c[i].x - c[i - 1].x, dy = c[i].y - c[i - 1].y, y = c[i].y;
+      // waagrechter Arm oder Bogenende (S-Bogen) ragt über die Seite hinaus
+      if (Math.abs(dy) < 0.25 * Math.abs(dx) && y >= band[0] && y <= band[1] && (y < lo || y > hi) && out * (c[i].x - edge) > 1) return false;
+    }
+  }
+  return true;
+}
+
+/** Alle an dieser Grenze möglichen Verbindungen (Balken-Variante kommt in der Engine dazu). Satzzeichen verbinden nie: kein Verschachteln unter den F-Arm, kein Schwanz darunter. */
 export function joinsFor(l: Inst, r: Inst): Join[] {
   const out: Join[] = [{ type: "none" }];
+  if (isPunct(l.def) || isPunct(r.def)) return out;
   if (dock(l, "zone") && l.def.cover) out.push({ type: "nest" });
   if (dock(l, "foot") && l.def.reach && dock(r, "leg", "left") && r.def.lift) out.push({ type: "underrun" });
   const stemL = dock(r, "stem", "left"), term = dock(l, "terminal");

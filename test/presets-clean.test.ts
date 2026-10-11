@@ -65,3 +65,9 @@ test("Seitenverhältnis: fehlend = frei (null), 2 gilt, −1/0/unendlich/Text ab
   expect(cleanPreset({ ...dieFlaeche, aspect: 2 }, KNOWN)!.aspect).toBe(2);
   for (const bad of [-1, 0, Infinity, "2"]) expect(cleanPreset({ ...dieFlaeche, aspect: bad }, KNOWN)).toBeNull();
 });
+
+test("gespeicherter alter Wortabstand 136 wird zum neuen Standard", () => {
+  const old = { ...valid, style: { ...valid.style, wordGap: 136 } };
+  expect(cleanState(old, KNOWN)!.style.wordGap).toBe(FLAECHE_1902.wordGap);
+  expect(cleanState({ ...valid, style: { ...valid.style, wordGap: 300 } }, KNOWN)!.style.wordGap).toBe(300);
+});

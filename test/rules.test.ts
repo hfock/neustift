@@ -150,3 +150,18 @@ test("c Strich teilen nur, wo der Nachbar auf Höhe des Strichendes einen Stamm 
   expect(types("T", "U")).toEqual(["none", "term"]);
   expect(types("C", "H")).toEqual(["none", "term"]);
 });
+
+test("Feinschliff: Satzzeichen verbinden nie und halten überall den Buchstabenabstand", () => {
+  const P = Object.keys(GLYPHS).filter((c) => /[\p{P}\p{S}]/u.test(c));
+  const bad: string[] = [];
+  for (const p of P)
+    for (const c of Object.keys(GLYPHS))
+      for (const [a, b, lc] of [[p, c, 0], [c, p, 0], [p, c, 1], [c, p, 1]] as const) {
+        const form = (x: string) => ("lc" in GLYPHS[x].params ? { lc } : {}); // auch die Kleinbuchstaben-Formen von - – ( )
+        const l = inst(a, form(a)), r = inst(b, form(b));
+        if (joinsFor(l, r).length !== 1) bad.push(`${a}${b} verbindet`);
+        const g = lightGap(l, 0, r, spacing(l, r, S), S.gap);
+        if (g < S.gap - 1) bad.push(`${a}${b} ${g.toFixed(0)}`);
+      }
+  expect(bad).toEqual([]);
+});

@@ -24,6 +24,9 @@ const jobs: [string, string, number, number?][] = [
   ["block-flaeche-1-1", "DIE FLÄCHE", 0.5, 1],
   ["block-wiener-2-1", "Wiener Werkstätte", 0.5, 2],
   ["block-wiener-2-3", "Wiener Werkstätte", 0.5, 2 / 3],
+  ["feinschliff-app-strich", "E-g E-G F-a L-T H-H e-mail T-Shirt Ost-West", 0.5],
+  ["feinschliff-app-hoehe", "A-Z 10-20 10–20 Uhr (neu) (NEU) (Hagen) und – so", 0.5],
+  ["feinschliff-app-wort", "Hagen Aad Fock DIE FLÄCHE DA VOR", 0.5],
 ];
 mkdirSync("out", { recursive: true });
 for (const [name, text, interlock, aspect = null] of jobs) {

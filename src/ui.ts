@@ -384,7 +384,7 @@ $("resetLetter").addEventListener("click", () => {
   commit();
 });
 
-addEventListener("keydown", (e) => {
+window.addEventListener("keydown", (e) => {
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
     e.preventDefault();
     flush(); // getippter Text wird erst ein Schritt, dann geht Rückgängig genau einen zurück
