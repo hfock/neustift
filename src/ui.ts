@@ -1,5 +1,6 @@
 import dieFlaeche from "../presets/die-flaeche.json";
 import hagen from "../presets/hagen-aad-fock.json";
+import hagenBlock from "../presets/hagen-aad-fock-block.json";
 import overlayUrl from "../reference/die-flaeche-overlay.jpg";
 import { joinOptions, layoutText, type Layout, type Placed } from "./engine";
 import { cutTop, type Params } from "./glyphs";
@@ -13,7 +14,7 @@ type HandleKind = "h" | "w" | "bar" | "foot" | "top";
 
 const OVERLAYS: Record<string, string> = { "die-flaeche": overlayUrl };
 const OVERLAY_KEYS: ReadonlySet<string> = new Set(Object.keys(OVERLAYS));
-const BUILTIN: Preset[] = [dieFlaeche, hagen].map((p) => cleanPreset(p, OVERLAY_KEYS)).filter((p): p is Preset => p !== null);
+const BUILTIN: Preset[] = [dieFlaeche, hagen, hagenBlock].map((p) => cleanPreset(p, OVERLAY_KEYS)).filter((p): p is Preset => p !== null);
 const KEY = "kairos.state", PRESETS = "kairos.presets", SVGNS = "http://www.w3.org/2000/svg";
 const LABEL: Record<string, string> = {
   none: "keine",

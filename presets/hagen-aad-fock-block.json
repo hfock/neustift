@@ -1,0 +1,9 @@
+{
+  "name": "HAGEN AAD FOCK (Block)",
+  "text": "HAGEN AAD FOCK",
+  "style": "flaeche-1902",
+  "controls": { "targetWidth": null, "interlock": 0.5 },
+  "variant": 0,
+  "pins": { "letters": {}, "joins": {} },
+  "aspect": 2
+}
