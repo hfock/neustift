@@ -268,6 +268,7 @@ function renderVariants() {
       b.textContent = String(k + 1);
       b.className = k === state.variant ? "on" : "";
       b.onclick = () => {
+        flush(); // Variante gehört zum neuen Text
         state.variant = k;
         update();
         commit();
@@ -393,6 +394,7 @@ addEventListener("keydown", (e) => {
   }
   if ((e.target as Element).closest?.("input, select, textarea")) return; // Regler und Felder behalten ihre Pfeiltasten
   const step = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+  if (step) flush();
   if (step && variants[state.variant + step]) {
     state.variant += step;
     update();
@@ -472,10 +474,12 @@ const slug = (t: string) =>
 const exportSvg = () => (layout ? svgString(layout, state.style, { ink: state.ink, paper: state.transparent ? null : state.paper }) : null);
 
 $("exportSvg").addEventListener("click", () => {
+  flush(); // exportiert den getippten Text, nicht den vorigen
   const t = exportSvg();
   if (t) download(`${slug(state.text)}.svg`, new Blob([t], { type: "image/svg+xml" }));
 });
 $("exportPng").addEventListener("click", async () => {
+  flush();
   const t = exportSvg();
   if (!t) return;
   const url = URL.createObjectURL(new Blob([t], { type: "image/svg+xml" }));
