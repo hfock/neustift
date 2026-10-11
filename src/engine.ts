@@ -252,6 +252,12 @@ export function joinOptions(v: Layout, i: number): Join[] {
 const MAX_LINES = 6;
 /** Varianten mit anderem Umbruch: bis zu SPLITS Teilungen, deren Bewertung höchstens SPLIT_MARGIN über der besten liegt. */
 const SPLITS = 3, SPLIT_MARGIN = 0.5;
+/**
+ * Verbindungen einer gesperrten Zeile lösen, wenn ihre offenen Lücken dadurch mehr als RELEASE-mal so weit würden wie der
+ * Buchstabenabstand (verbundene Grenzen bleiben eng). 2: bis zur doppelten Lichtweite bleibt der Rhythmus ruhig und die
+ * Verbindungen stehen; darüber staut sich die Sperrung („FO   CK“) – dann gleichmäßig über alle Lücken.
+ */
+const RELEASE = 2;
 /** Bis zu so vielen Wörtern werden alle Umbrüche probiert, darüber je Zeilenzahl die ausgewogenste Teilung. */
 const ENUM_WORDS = 16;
 
@@ -286,12 +292,19 @@ function lineDrop(up: Placed[], down: Placed[], s: Style): number {
  * Sperrung: den Rest bis zur Blockbreite gleichmäßig in die Lücken ohne Verbindung (Wortabstand, Buchstaben ohne Verbindung
  * und Balken), so wird jede Zeile bündig. Ohne offene Lücke (ein Zeichen, alles verbunden) bleibt sie kürzer – dann der Hinweis.
  */
-function pad(v: Layout, w: number): Layout {
-  const rest = w - v.width;
-  const open = v.glyphs.slice(1).map((g, k) => {
+/** Je Grenze nach Glyphe k: offen (sperrbar), wenn ohne Verbindung und Balken. */
+const openGaps = (v: Layout) =>
+  v.glyphs.slice(1).map((_, k) => {
     const j = v.joins[v.glyphs[k].index];
     return !j || (j.type === "none" && !j.bar);
   });
+
+/** Sperrung je offene Lücke, um v auf w zu bringen (Infinity ohne offene Lücke). */
+const perGap = (v: Layout, w: number) => (w - v.width) / openGaps(v).filter(Boolean).length;
+
+function pad(v: Layout, w: number): Layout {
+  const rest = w - v.width;
+  const open = openGaps(v);
   const n = open.filter(Boolean).length;
   if (rest <= 1 || !n) return v;
   let dx = 0;
@@ -405,6 +418,25 @@ export function layoutText(text: string, o: Options & { aspect: number | null })
   // ponytail: lange Texte nur mit der besten Teilung und 2 Varianten je Zeile (fitWidth auf langen Zeilen ist teuer);
   // mehr Auswahl kostet je Teilung etwa so viel noch einmal
   const long = spans.length > ENUM_WORDS;
+  /**
+   * Gesperrte Zeile ohne automatische Verbindungen (Hagen 2026-10-11, gleichmäßiger Rhythmus): müsste eine Variante mit
+   * Verbindungen je offene Lücke um mehr als (RELEASE − 1) × gap gesperrt werden, ersetzt sie die Zeile ohne Verbindungen
+   * (alle Grenzen „none“, gepinnte Verbindungen bleiben) – sofern die kollisionsfrei passt und nicht über den Block ragt.
+   */
+  const loosen = (x: Result, [i, j]: number[], w: number): Result => {
+    const loose = (v: Layout) => w - v.width > 1 && openGaps(v).some((o) => !o) && perGap(v, w) > (RELEASE - 1) * s.gap;
+    if (!x.variants.some(loose)) return x;
+    const joins: Pins["joins"] = {};
+    for (const sp of spans.slice(i, j + 1)) for (let k = sp.a; k < sp.b - 1; k++) joins[k] = { type: "none", bar: false };
+    const p = layoutLine(mask(i, j), { ...lo, pins: { ...o.pins, joins: { ...joins, ...o.pins.joins } }, targetWidth: w, variants: 1 });
+    const q = p.variants[0];
+    if (!q || q.width > w + 1 || p.warnings.some((m) => m !== ZIEL && !x.warnings.includes(m))) return x;
+    // die gelöste Zeile erbt die Bewertung der besten Variante, die sie ersetzt (wie sie in die Kombination eingeht):
+    // der gleichmäßige Rhythmus ist Hagens Wunsch, kein Verlust an Verbindungen
+    const short = (v: Layout) => (WEIGHTS.deviation * Math.max(0, w - v.width)) / s.capHeight;
+    const score = Math.min(...x.variants.filter(loose).map((v) => v.score - short(v))) + short(q);
+    return { ...x, variants: [{ ...q, score }, ...x.variants.filter((v) => !loose(v))].sort((a, b) => a.score - b.score) };
+  };
   /** Eine Teilung setzen: jede Zeile auf die Blockbreite; ausgelotet mit der besten Variante je Zeile, dann alle Varianten auf die gefundene Breite. */
   const realize = (r: (typeof rated)[number]) => {
     const fit = (w: number, variants = count) => r.lines.map(([i, j]) => layoutLine(mask(i, j), { ...lo, targetWidth: w, variants }));
@@ -412,7 +444,7 @@ export function layoutText(text: string, o: Options & { aspect: number | null })
     const g = fit(w, 1).map((x) => x.variants[0].width);
     if (g.some((x) => x > w + 1)) w = Math.max(...g); // eine Zeile wird nicht so schmal: Block breiter; zu kurze sperrt pad
     let combos: { rows: Layout[]; score: number }[] = [{ rows: [], score: r.uneven }];
-    for (const x of fit(w, long ? 2 : count)) {
+    for (const x of fit(w, long ? 2 : count).map((x, k) => loosen(x, r.lines[k], w))) {
       x.warnings.forEach((m) => m !== ZIEL && warn.add(m));
       combos = combos
         // zu schmal kostet nichts extra (die Dehnung bewertet uneven, den Rest füllt pad); zu breit bleibt teuer

@@ -371,3 +371,22 @@ test("Block: Zeilenabstand = Buchstabenabstand für die Prüfblatt-Texte", () =>
       for (let k = 1; k < r.length; k++) expect(Math.abs(minDist(visible(r[k - 1]), 0, visible(r[k]), 0, 1000) - FLAECHE_1902.gap)).toBeLessThanOrEqual(1);
     }
 });
+
+test("Block (Hagen 2): gesperrte Zeile löst Verbindungen – FOCK bei 1:1 gleichmäßig F – O – C – K", () => {
+  const v = block("HAGEN AAD FOCK", 1), r = rows(v), fock = r[2];
+  expect(fock.map((g) => g.char).join("")).toBe("FOCK");
+  expect([10, 11, 12].map((i) => v.joins[i].type)).toEqual(["none", "none", "none"]);
+  expect(Math.abs(ext(fock) - ext(r[0]))).toBeLessThanOrEqual(1);
+  // Lichtweite zwischen benachbarten Buchstaben (sichtbare Tinte): größte ≤ 1,5 × kleinste
+  const gaps = fock.slice(1).map((g, k) => minDist(visible([fock[k]]), 0, visible([g]), 0, 5000));
+  expect(Math.max(...gaps) / Math.min(...gaps)).toBeLessThanOrEqual(1.5);
+});
+
+test("Block (Hagen 2): gepinnte Verbindung bleibt in einer gesperrten Zeile", () => {
+  const pins = { letters: {}, joins: { 12: { type: "share", sub: "term" } as const } };
+  const v = layoutText("HAGEN AAD FOCK", { ...opts({ pins }), aspect: 1 }).variants[0], r = rows(v);
+  expect(r.map((g) => g.map((x) => x.char).join(""))).toEqual(["HAGEN", "AAD", "FOCK"]);
+  expect(v.joins[12]).toMatchObject({ type: "share", sub: "term" });
+  expect([v.joins[10].type, v.joins[11].type]).toEqual(["none", "none"]); // die automatischen sind gelöst
+  expect(Math.abs(ext(r[2]) - ext(r[0]))).toBeLessThanOrEqual(1);
+});
