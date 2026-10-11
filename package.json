@@ -7,8 +7,9 @@
     "test": "bun test",
     "typecheck": "tsc --noEmit -p .",
     "sheet": "bun tools/sheet.ts",
+    "icons": "bun tools/icons.ts",
     "font": "bun tools/export-font.ts && uv run --with typing_extensions==4.15.0 tools/build_font.py && uv run --with typing_extensions==4.15.0 tools/test_font.py",
-    "web": "bun run font && rm -rf web && bun build ./index.html ./font.html --outdir web --minify && cp dist/Neustift-Regular.otf dist/Neustift-Regular.woff2 OFL.txt web/"
+    "web": "bun run font && rm -rf web && bun build ./index.html ./font.html --outdir web --minify && cp dist/Neustift-Regular.otf dist/Neustift-Regular.woff2 OFL.txt public/* web/"
   },
   "devDependencies": {
     "@types/bun": "1.4.2",
