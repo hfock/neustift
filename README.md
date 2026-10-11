@@ -10,6 +10,8 @@ Live: https://font.fock.rocks (Werkstatt) und https://font.fock.rocks/font (Font
 - Plan M1: `docs/superpowers/plans/2026-10-06-kairos-font-m1.md`
 - Übrige Versalien (M2, Teil 1): `docs/superpowers/specs/2026-10-07-kairos-versalien.md`
 - Spec M2 (Font-Datei, Ziffern, Zeichen, Ligaturen): `docs/superpowers/specs/2026-10-07-kairos-font-m2-design.md`
+- Spec M4 (Kleinbuchstaben): `docs/superpowers/specs/2026-10-09-neustift-m4-kleinbuchstaben-design.md`
+- Spec M3 (Blöcke): `docs/superpowers/specs/2026-10-11-neustift-m3-mehrzeilig-design.md` – Enter bricht um, Regler „Seitenverhältnis“ verteilt die Wörter auf bündige, eng verschränkte Zeilen (`layoutText`); Vorlage „HAGEN AAD FOCK (Block)“. Der Font bleibt einzeilig.
 
 ## Befehle
 

@@ -411,6 +411,8 @@ function renderPresets() {
     `<option value="">Vorlagen …</option>` + presets().map((p, k) => `<option value="${k}">${escapeHtml(p.name)}</option>`).join("");
 }
 function usePreset(p: Preset) {
+  clearTimeout(typing); // getippter Text wird von der Vorlage ersetzt
+  typing = 0;
   state = fromPreset(p, state);
   update();
   syncControls();
