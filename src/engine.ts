@@ -12,7 +12,7 @@ export type Layout = { glyphs: Placed[]; extras: Stroke[]; joins: Record<number,
 export type Result = { variants: Layout[]; warnings: string[] };
 
 /** Alle Gewichte an einer Stelle. Verbindungskosten bei Verschränkung 0; davon wird gain × Verschränkung abgezogen. */
-export const WEIGHTS = { nest: 0.2, underrun: 0.2, term: 0.2, cross: 0.2, tail: 0.2, stem: 1.0, leg: 0.6, bar: 0.6, gain: 1.0, width: 0.2, flush: 0.3, rhythm: 0.2, deviation: 5, aspect: 1, uneven: 1 };
+export const WEIGHTS = { nest: 0.2, underrun: 0.2, term: 0.2, cross: 0.2, tail: 0.2, stem: 1.0, leg: 0.6, bar: 0.6, gain: 1.0, width: 0.2, flush: 0.3, rhythm: 0.2, deviation: 5, aspect: 2, uneven: 1 };
 const BEAM = 32;
 const CODE: Record<string, string> = { none: "-", nest: "N", underrun: "U", term: "T", stem: "S", leg: "L", cross: "Q", tail: "G" };
 
@@ -250,8 +250,6 @@ export function joinOptions(v: Layout, i: number): Join[] {
 }
 
 const MAX_LINES = 6;
-/** Sperrung, wenn fitWidth eine Zeile nicht auf Blockbreite bringt: je offene Lücke höchstens TRACK × Buchstabenabstand. */
-const TRACK = 1;
 /** Varianten mit anderem Umbruch: bis zu SPLITS Teilungen, deren Bewertung höchstens SPLIT_MARGIN über der besten liegt. */
 const SPLITS = 3, SPLIT_MARGIN = 0.5;
 /** Bis zu so vielen Wörtern werden alle Umbrüche probiert, darüber je Zeilenzahl die ausgewogenste Teilung. */
@@ -285,10 +283,10 @@ function lineDrop(up: Placed[], down: Placed[], s: Style): number {
 }
 
 /**
- * Rest bis zur Blockbreite gleichmäßig in die Lücken ohne Verbindung (Wortabstand, Buchstaben ohne Verbindung und Balken),
- * je Lücke höchstens max – sonst bleibt die Zeile kürzer und der Hinweis zur Zielbreite erscheint.
+ * Sperrung: den Rest bis zur Blockbreite gleichmäßig in die Lücken ohne Verbindung (Wortabstand, Buchstaben ohne Verbindung
+ * und Balken), so wird jede Zeile bündig. Ohne offene Lücke (ein Zeichen, alles verbunden) bleibt sie kürzer – dann der Hinweis.
  */
-function pad(v: Layout, w: number, max: number): Layout {
+function pad(v: Layout, w: number): Layout {
   const rest = w - v.width;
   const open = v.glyphs.slice(1).map((g, k) => {
     const j = v.joins[v.glyphs[k].index];
@@ -297,7 +295,7 @@ function pad(v: Layout, w: number, max: number): Layout {
   const n = open.filter(Boolean).length;
   if (rest <= 1 || !n) return v;
   let dx = 0;
-  const offs = v.glyphs.map((_, k) => (dx += k && open[k - 1] ? Math.min(max, rest / n) : 0));
+  const offs = v.glyphs.map((_, k) => (dx += k && open[k - 1] ? rest / n : 0));
   const glyphs = v.glyphs.map((g, k) => ({ ...g, x: g.x + offs[k] }));
   // Balken gehören zu einem verbundenen Paar: mit dem Buchstaben links davon verschieben
   const extras = v.extras.map((e) => {
@@ -389,14 +387,17 @@ export function layoutText(text: string, o: Options & { aspect: number | null })
     walk([0]);
   } else splits = balanced(spans.length, (i, j) => nat(i, j).width);
   const H = s.capHeight;
-  // Bewertung: Abweichung vom Seitenverhältnis + größte Lücke einer Zeile zur breitesten (die Verbindungskosten sind für alle Teilungen gleich)
+  // Bewertung: Abweichung vom Seitenverhältnis + stärkste Sperrung (Rest zur breitesten Zeile je Buchstabenlücke, in Versalhöhen);
+  // die Verbindungskosten sind für alle Teilungen gleich
   const rated = splits.map((starts) => {
     const lines = starts.map((i, k) => [i, (starts[k + 1] ?? spans.length) - 1]);
     const ws = lines.map(([i, j]) => nat(i, j).width), wide = Math.max(...ws);
     const height = lines.length * H + (lines.length - 1) * s.gap; // Schätzung: Versalzeilen im Buchstabenabstand
     const shape = aspect ? WEIGHTS.aspect * Math.abs(Math.log(wide / height / aspect)) : 0;
-    const uneven = WEIGHTS.uneven * (1 - Math.min(...ws) / wide);
-    return { lines, block: o.targetWidth ?? Math.max(wide, aspect ? aspect * height : 0), uneven, score: shape + uneven };
+    const gaps = lines.map(([i, j]) => spans.slice(i, j + 1).reduce((t, w) => t + w.b - w.a, 0) - 1);
+    const uneven = WEIGHTS.uneven * Math.max(...ws.map((w, k) => (wide - w < 1 ? 0 : (wide - w) / gaps[k] / H))); // ein Zeichen allein: unendlich
+    // Blockbreite = breiteste Zeile (Hagen 2026-10-11: kürzere Zeilen werden gesperrt, der Block nicht künstlich verbreitert)
+    return { lines, block: o.targetWidth ?? wide, uneven, score: shape + uneven };
   });
   rated.sort((x, y) => x.score - y.score);
 
@@ -408,10 +409,8 @@ export function layoutText(text: string, o: Options & { aspect: number | null })
   const realize = (r: (typeof rated)[number]) => {
     const fit = (w: number, variants = count) => r.lines.map(([i, j]) => layoutLine(mask(i, j), { ...lo, targetWidth: w, variants }));
     let w = r.block;
-    const got = () => fit(w, 1).map((x) => x.variants[0].width);
-    let g = got();
-    if (g.some((x) => x < w - 1)) (w = Math.min(...g)), (g = got()); // eine Zeile dehnt sich nicht so weit: Block schmaler
-    if (g.some((x) => x > w + 1)) w = Math.max(...g); // eine Zeile wird nicht so schmal: Block breiter, den Rest füllt pad
+    const g = fit(w, 1).map((x) => x.variants[0].width);
+    if (g.some((x) => x > w + 1)) w = Math.max(...g); // eine Zeile wird nicht so schmal: Block breiter; zu kurze sperrt pad
     let combos: { rows: Layout[]; score: number }[] = [{ rows: [], score: r.uneven }];
     for (const x of fit(w, long ? 2 : count)) {
       x.warnings.forEach((m) => m !== ZIEL && warn.add(m));
@@ -423,7 +422,7 @@ export function layoutText(text: string, o: Options & { aspect: number | null })
     }
     // gesetzt ist die Höhe bekannt: Seitenverhältnis am echten Block bewerten
     return combos.map((c) => {
-      const b = stack(c.rows.map((v) => pad(v, w, TRACK * s.gap)), c.score, s);
+      const b = stack(c.rows.map((v) => pad(v, w)), c.score, s);
       return aspect ? { ...b, score: b.score + WEIGHTS.aspect * Math.abs(Math.log(b.width / b.height / aspect)) } : b;
     });
   };

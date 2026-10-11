@@ -333,7 +333,41 @@ test("Block: langer Text (60 Wörter) in unter 1 s", () => {
 test("Block: Hinweis „Zielbreite nicht erreichbar“, wenn eine Zeile nicht auf Blockbreite kommt (Spec 4.3), einzeilig frei nicht", () => {
   const ZIEL = "Zielbreite nicht erreichbar – nächstbeste Breite gezeigt";
   expect(layoutText("A\nB\nCCCCC", { ...opts(), aspect: null }).warnings).toContain(ZIEL);
-  expect(layoutText("DIE FLÄCHE", { ...opts(), aspect: 1 }).warnings).toContain(ZIEL);
+  expect(layoutText("DIE FLÄCHE", { ...opts(), aspect: 1 }).warnings).not.toContain(ZIEL); // seit der Anpassungsrunde gesperrt und bündig
   expect(layoutText("A\nB\nCCCCC", { ...opts({ targetWidth: 100 }), aspect: null }).warnings).toContain(ZIEL);
   expect(layoutText("DIE FLÄCHE", { ...opts(), aspect: null }).warnings).not.toContain(ZIEL);
+});
+
+test("Block (Hagen): kurze Zeilen gesperrt und bündig – DIE / FLÄCHE bei 1:1 gleich breit, ohne Hinweis", () => {
+  const r = layoutText("DIE FLÄCHE", { ...opts(), aspect: 1 });
+  const [a, b] = rows(r.variants[0]);
+  expect([a, b].map((g) => g.map((x) => x.char).join(""))).toEqual(["DIE", "FLÄCHE"]);
+  expect(Math.abs(ext(a) - ext(b))).toBeLessThanOrEqual(1);
+  expect(r.warnings).toEqual([]);
+});
+
+test("Block (Hagen): HAGEN AAD FOCK – 1:1 drei Zeilen, 2:1 HAGEN / AAD FOCK, alle bündig", () => {
+  const sq = rows(block("HAGEN AAD FOCK", 1)), wide = rows(block("HAGEN AAD FOCK", 2));
+  expect(sq.map((g) => g.map((x) => x.char).join(""))).toEqual(["HAGEN", "AAD", "FOCK"]);
+  expect(wide.map((g) => g.map((x) => x.char).join(""))).toEqual(["HAGEN", "AADFOCK"]);
+  for (const r of [sq, wide]) expect(Math.max(...r.map(ext)) - Math.min(...r.map(ext))).toBeLessThanOrEqual(1);
+});
+
+// Toleranz Faktor 1,6: umbrochen wird nur an Wortgrenzen, die Blockbreite ist die breiteste Zeile (nie künstlich verbreitert)
+// und die Höhe wächst in Zeilensprüngen von rund 750 bei Blöcken von 1500–3000 – genauer geht es mit ganzen Wörtern nicht.
+test("Block: Seitenverhältnis des Blocks liegt nahe am gewählten (Faktor ≤ 1,6)", () => {
+  const cases: [string, number][] = [
+    ["HAGEN AAD FOCK", 2], ["HAGEN AAD FOCK", 1], ["DIE FLÄCHE", 1],
+    ["DIE FLÄCHE IST EINE ZEITSCHRIFT AUS", 1], ["DIE FLÄCHE IST EINE ZEITSCHRIFT AUS", 2],
+    ["Die Fläche ist eine Zeitschrift aus Wien", 1], ["Die Fläche ist eine Zeitschrift aus Wien", 1 / 2],
+  ];
+  for (const [t, a] of cases) expect(Math.abs(Math.log(ratio(block(t, a)) / a))).toBeLessThanOrEqual(Math.log(1.6));
+});
+
+test("Block: Zeilenabstand = Buchstabenabstand für die Prüfblatt-Texte", () => {
+  for (const [t, a] of [["HAGEN AAD FOCK", 2], ["HAGEN AAD FOCK", 1], ["DIE FLÄCHE", 1], ["Wiener Werkstätte", 2], ["Wiener Werkstätte", 2 / 3]] as const)
+    for (const v of [block(t, a)]) { // die Variante des Prüfblatts; alle Varianten prüft der Test mit agypq
+      const r = rows(v);
+      for (let k = 1; k < r.length; k++) expect(Math.abs(minDist(visible(r[k - 1]), 0, visible(r[k]), 0, 1000) - FLAECHE_1902.gap)).toBeLessThanOrEqual(1);
+    }
 });
