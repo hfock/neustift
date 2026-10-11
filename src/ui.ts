@@ -1,7 +1,7 @@
 import dieFlaeche from "../presets/die-flaeche.json";
 import hagen from "../presets/hagen-aad-fock.json";
 import overlayUrl from "../reference/die-flaeche-overlay.jpg";
-import { joinOptions, layoutLine, type Layout, type Placed } from "./engine";
+import { joinOptions, layoutText, type Layout, type Placed } from "./engine";
 import { cutTop, type Params } from "./glyphs";
 import { svgString, type Overlay } from "./render";
 import { barLink, type Join } from "./rules";
@@ -25,6 +25,13 @@ const LABEL: Record<string, string> = {
   cross: "Querstrich teilen",
   tail: "Unterlänge unter den Nachbarn",
 };
+
+/** Seitenverhältnis-Regler: Stufen Breite : Höhe, null = frei. */
+const ASPECTS = [null, 3, 2, 1.5, 1, 2 / 3, 0.5], ASPECT_NAMES = ["frei", "3:1", "2:1", "3:2", "1:1", "2:3", "1:2"];
+/** Stufe zum Wert; Werte aus bearbeiteten Vorlagen ohne eigene Stufe landen auf der nächsten. */
+const aspectStop = (a: number | null) =>
+  a === null ? 0 : ASPECTS.reduce<number>((best, v, k) => (v !== null && Math.abs(Math.log(v / a)) < Math.abs(Math.log((ASPECTS[best] ?? Infinity) / a)) ? k : best), 1);
+const aspectName = (a: number | null) => (a === null || ASPECTS.includes(a) ? ASPECT_NAMES[aspectStop(a)] : `${Math.round(a * 100) / 100}:1`);
 
 const $ = <T extends HTMLElement = HTMLInputElement>(id: string) => document.getElementById(id) as T;
 const jkey = (j: Join) => j.sub ?? j.type;
@@ -59,6 +66,7 @@ const fromPreset = (p: Preset, keep?: State): State => ({
   showOverlay: false,
   opacity: keep?.opacity ?? 0.5,
   selected: null,
+  aspect: p.aspect ?? null,
 });
 
 // Browser-Speicher ist eine Vertrauensgrenze: Kaputtes führt zum Standard statt zum Absturz
@@ -92,7 +100,7 @@ function restore(from: string[], to: string[]) {
 }
 
 function update() {
-  const res = layoutLine(state.text, { style: state.style, interlock: state.interlock, targetWidth: state.target, pins: state.pins });
+  const res = layoutText(state.text, { style: state.style, interlock: state.interlock, targetWidth: state.target, pins: state.pins, aspect: state.aspect });
   variants = res.variants;
   state.variant = Math.max(0, Math.min(state.variant, variants.length - 1));
   layout = variants[state.variant] ?? null;
@@ -126,7 +134,7 @@ function renderPreview() {
   const ink = box.querySelector("#ink") as SVGGraphicsElement;
   if (!g) return;
   const layer = document.createElementNS(SVGNS, "g"); // oberste Ebene, damit Nachbar-Klickflächen die Griffe nicht verdecken
-  layer.setAttribute("transform", `translate(${g.x} 0)`);
+  layer.setAttribute("transform", `translate(${g.x} ${g.y ?? 0})`);
   ink.appendChild(layer);
   const size = 14 / (ink.getScreenCTM()?.a || 1); // 14 px, egal wie stark die Vorschau verkleinert ist
   for (const h of handles(g)) {
@@ -174,11 +182,11 @@ function drag(e: PointerEvent, start: Placed, kind: HandleKind) {
     const ev = last!;
     const g = layout?.glyphs.find((q) => q.index === i);
     if (!g) return;
-    const pt = fontPoint(ev), x = pt.x - g.x, p = g.inst.p;
+    const pt = fontPoint(ev), x = pt.x - g.x, y = pt.y - (g.y ?? 0), p = g.inst.p; // Buchstabenkoordinaten, auch in tieferen Zeilen
     let v: Params;
-    if (kind === "h") v = { h: clamp("h", pt.y / s.capHeight) };
+    if (kind === "h") v = { h: clamp("h", y / s.capHeight) };
     else if (kind === "w") v = { w: clamp("w", p.w + x - g.inst.prof.maxX) };
-    else if (kind === "bar") v = { bar: pt.y < s.capHeight / 2 ? 1 : 0 };
+    else if (kind === "bar") v = { bar: y < s.capHeight / 2 ? 1 : 0 };
     else if (kind === "foot") {
       const end = g.inst.docks.find((d) => d.kind === "foot") as { end: number };
       v = { foot: clamp("foot", p.foot + x - end.end) };
@@ -256,7 +264,9 @@ function renderVariants() {
 }
 
 function syncControls() {
-  $("text").value = state.text;
+  if ($("text").value !== state.text) $("text").value = state.text; // gleicher Text: Schreibmarke bleibt, wo sie ist
+  $("aspect").value = String(aspectStop(state.aspect));
+  $("aspectName").textContent = aspectName(state.aspect);
   $("interlock").value = String(state.interlock);
   $("targetFree").checked = state.target === null;
   $("target").disabled = state.target === null;
@@ -281,6 +291,8 @@ $("preview").addEventListener("click", (e) => {
   save(KEY, state);
 });
 
+// Neu setzen erst nach einer Tipp-Pause: lange Blöcke brauchen bis ~2 s je Durchlauf
+let typing = 0;
 $("text").addEventListener("input", () => {
   state.text = $("text").value.normalize("NFC"); // „Ä“ als A + Trema (NFD) würde sonst zerfallen
   state.pins = { letters: {}, joins: {} }; // Positionen verschieben sich beim Tippen
@@ -288,10 +300,20 @@ $("text").addEventListener("input", () => {
   state.variant = 0;
   state.overlay = null;
   state.showOverlay = false;
-  update();
-  syncControls();
-  commit();
+  clearTimeout(typing);
+  typing = setTimeout(() => {
+    update();
+    syncControls();
+    commit();
+  }, 200) as unknown as number;
 });
+
+$("aspect").addEventListener("input", () => {
+  state.aspect = ASPECTS[Number($("aspect").value)] ?? null;
+  $("aspectName").textContent = aspectName(state.aspect);
+  update();
+});
+$("aspect").addEventListener("change", commit);
 
 const sliders: [string, (v: number) => void][] = [
   ["interlock", (v) => (state.interlock = v)],
@@ -390,6 +412,7 @@ const toPreset = (name: string): Preset => ({
   controls: { targetWidth: state.target, interlock: state.interlock },
   variant: state.variant,
   pins: structuredClone(state.pins),
+  aspect: state.aspect,
   ...(state.overlay ? { overlay: state.overlay } : {}),
 });
 $("preset").addEventListener("change", () => {

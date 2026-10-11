@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { layoutLine, type Layout } from "../src/engine";
+import { layoutLine, layoutText, type Layout } from "../src/engine";
 import { L, stroke } from "../src/geom";
 import type { GlyphDef } from "../src/glyphs";
 import { svgString } from "../src/render";
@@ -110,4 +110,28 @@ test("Strich mit eigener Oberkante (k-Arm): eigener Beschnitt nur für diesen St
   const svg = svgString(k, S, { ink: "#000", paper: null });
   expect(svg).toContain('<clipPath id="kairos-h3000"><rect x="-1000" y="0" width="3000" height="300"/></clipPath>');
   expect(svg).toMatch(/<g data-i="0" transform="translate\([^)]+\)"><path [^>]+\/><g clip-path="url\(#kairos-h3000\)"><path [^>]+\/><\/g><path /);
+});
+
+test("Block: viewBox umfasst beide Zeilen, zweite Zeile mit translate(x y)", () => {
+  const b = layoutText("DIE\nFLÄCHE", { style: S, interlock: 0.5, targetWidth: null, pins: { letters: {}, joins: {} }, aspect: null }).variants[0];
+  expect(b.lines).toBe(2);
+  const svg = svgString(b, S, { ink: "#000", paper: "#fff", interactive: true, selected: 4, pinned: [5] });
+  const h = Number(svg.match(/viewBox="[^"]+ ([\d.]+)"/)![1]);
+  expect(h).toBe(Math.round((b.height + 120) * 10) / 10);
+  const f = b.glyphs.find((g) => g.index === 4)!; // F in Zeile 2
+  expect(f.y!).toBeLessThan(0);
+  const tr = `translate(${Math.round(f.x * 10) / 10} ${Math.round(f.y! * 10) / 10})`;
+  expect(svg).toContain(`<g data-i="4" transform="${tr}"><rect class="sel"`);
+  expect(svg).toContain(`<g data-i="4" transform="${tr}"`);
+  expect(svg.match(/<rect x="-10000000" y="[-\d.]+" width="20000000" height="700"\/>/g)!.length).toBe(2); // Zeilenband je Zeile
+  expect(svg).toMatch(/<clipPath id="kairos-zeile-\d+">/); // eigene Kennung: die einzeilige Wortmarke im Seitenkopf hat schon „kairos-zeile“
+  expect(svg).not.toContain("NaN");
+});
+
+test("Block: frei ohne Enter ergibt dasselbe SVG wie layoutLine", () => {
+  const o = { style: S, interlock: 0.5, targetWidth: null, pins: { letters: {}, joins: {} } };
+  for (const t of ["DIE FLÄCHE", "WIEN, 12."]) {
+    const a = layoutText(t, { ...o, aspect: null }).variants[0], b = layoutLine(t, o).variants[0];
+    expect(svgString(a, S, { ink: "#000", paper: "#fff", interactive: true, selected: 1 })).toBe(svgString(b, S, { ink: "#000", paper: "#fff", interactive: true, selected: 1 }));
+  }
 });

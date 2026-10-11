@@ -436,6 +436,7 @@ export function layoutText(text: string, o: Options & { aspect: number | null })
     .slice(0, count);
   const best = blocks[0], t = o.targetWidth;
   const rowWidths = [...new Set(best.glyphs.map((g) => g.y))].map((y) => extent(best.glyphs.filter((g) => g.y === y)).width);
-  if ((t && Math.abs(best.width - t) > 2) || rowWidths.some((rw) => best.width - rw > 2)) warn.add(ZIEL);
+  // nur mit gesetzter Zielbreite: ohne sie hat niemand eine Breite verlangt
+  if (t && (Math.abs(best.width - t) > 2 || rowWidths.some((rw) => best.width - rw > 2))) warn.add(ZIEL);
   return { variants: blocks, warnings: [...warn] };
 }

@@ -329,3 +329,9 @@ test("Block: langer Text (60 Wörter) in unter 1 s", () => {
   expect(performance.now() - t0).toBeLessThan(1000);
   expect(v.lines).toBeLessThanOrEqual(6);
 });
+
+test("Block: ohne Zielbreite kein Hinweis „Zielbreite nicht erreichbar“, mit unerreichbarer schon", () => {
+  const ZIEL = "Zielbreite nicht erreichbar – nächstbeste Breite gezeigt";
+  expect(layoutText("A\nB\nCCCCC", { ...opts(), aspect: null }).warnings).not.toContain(ZIEL);
+  expect(layoutText("A\nB\nCCCCC", { ...opts({ targetWidth: 100 }), aspect: null }).warnings).toContain(ZIEL);
+});
