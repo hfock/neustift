@@ -40,19 +40,21 @@ Text lässt sich als Block setzen: mehrere Zeilen, alle gleich breit, eng übere
 
 - Mit Enter: Zeilen wie getippt; das Seitenverhältnis wirkt dann nur noch auf die Breite (keine weiteren Umbrüche).
 - Ohne Enter und mit Seitenverhältnis: die Engine probiert alle Umbrüche an Wortgrenzen (höchstens 6 Zeilen) und wählt den mit der besten Bewertung:
-  - Abweichung des Blocks vom Seitenverhältnis,
+  - Abweichung des Blocks vom Seitenverhältnis (stark gewichtet: „HAGEN AAD FOCK“ 1:1 → HAGEN / AAD / FOCK, 2:1 → HAGEN / AAD FOCK),
   - Ungleichheit der natürlichen Zeilenbreiten (wie stark eine Zeile gedehnt werden müsste),
   - Kosten der Verbindungen wie bisher.
 - Wörter werden nie getrennt.
 
 ### 4.3 Breite
 
-- Blockbreite = breiteste Zeile in ihrer natürlichen Breite (oder die vom Seitenverhältnis verlangte, wenn größer).
-- Jede kürzere Zeile wird mit `fitWidth` auf die Blockbreite gebracht; gelingt das nicht ganz, zeigt die App den bestehenden Hinweis zur Zielbreite.
+- Blockbreite = breiteste Zeile in ihrer natürlichen Breite. Das Seitenverhältnis wirkt über die Wahl des Umbruchs, nicht über zusätzliche Breite.
+- Jede kürzere Zeile wird mit `fitWidth` auf die Blockbreite gebracht (Breitenregler, Wortabstand, Verbindungen), der Rest durch Sperren ohne Obergrenze: der Block ist immer bündig (Hagen, Sichtprüfung 2026-10-11, „DIE“ über „FLÄCHE“).
+- Bräuchte eine Zeile mit Verbindungen mehr als den doppelten Buchstabenabstand Sperrung je freier Lücke, werden ihre automatischen Verbindungen gelöst und die Sperrung gleichmäßig verteilt (FOCK → F – O – C – K statt „Fo   CK“). Gepinnte Verbindungen bleiben.
+- Nur eine Zeile, die gar nicht gesperrt werden kann (z. B. ein einzelner Buchstabe), zeigt den bestehenden Hinweis zur Zielbreite.
 
 ### 4.4 Zeilenabstand
 
-- Die erste Zeile steht wie heute. Jede weitere rückt so weit hoch, bis die kleinste senkrechte Lichtweite zwischen ihrer Tinte und der Tinte der Zeile darüber dem Buchstabenabstand (`gap`, 56) entspricht; höchstens bis zur vollen Versalhöhe plus Wortabstand nach unten (kein Überlappen).
+- Die erste Zeile steht wie heute. Jede weitere rückt so weit hoch, bis die kleinste senkrechte Lichtweite zwischen ihrer Tinte und der Tinte der Zeile darüber dem Buchstabenabstand (`gap`, 56) entspricht (kein Überlappen; gemessen an der sichtbaren, beschnittenen Tinte).
 - Unterlängen der oberen Zeile und Oberlängen der unteren greifen so ineinander, ohne sich zu berühren.
 
 ### 4.5 Varianten, Pins, Export
@@ -63,7 +65,7 @@ Text lässt sich als Block setzen: mehrere Zeilen, alle gleich breit, eng übere
 
 ### 4.6 Vorlage
 
-- Neue mitgelieferte Vorlage `presets/hagen-aad-fock-block.json`: Text „HAGEN AAD FOCK“, Seitenverhältnis 2:1, Verschränkung 0,5; Pins nach Hagens Sichtprüfung.
+- Neue mitgelieferte Vorlage `presets/hagen-aad-fock-block.json`: Text „HAGEN AAD FOCK“, Seitenverhältnis 2:1, Verschränkung 0,5; Pin: G steckt im E (Verbindung `share term` an Grenze 2), Rest automatisch.
 
 ## 5. Tests und Abnahme
 
