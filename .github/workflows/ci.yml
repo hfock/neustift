@@ -18,7 +18,7 @@ jobs:
           bun-version: 1.3.12
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
-      - run: bun test
+      - run: bun run test
 
   # Font bauen und mit harfbuzz gegen die Engine prüfen, dann die statische Seite bauen
   font:
