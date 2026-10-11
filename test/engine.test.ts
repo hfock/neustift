@@ -5,6 +5,7 @@ import { minDist } from "../src/geom";
 import { GLYPHS, cutTop } from "../src/glyphs";
 import { PUNCT_REACH, lightGap } from "../src/rules";
 import { FLAECHE_1902 } from "../src/style";
+const SLOW = process.env.CI ? 3 : 1; // CI-Rechner sind langsamer als der Mac
 
 const opts = (o: Partial<Options> = {}): Options => ({ style: FLAECHE_1902, interlock: 0.5, targetWidth: null, pins: { letters: {}, joins: {} }, ...o });
 /** Verbindungen einer Variante als Kurzschrift je Grenze, z. B. { 4: "nest" }. */
@@ -68,7 +69,7 @@ test("Pins außerhalb des Spielraums: Hinweis statt Absturz oder stiller Überna
 test("Pin außerhalb des Spielraums mitten im Wort: Hinweis statt Hängen", () => {
   const t0 = performance.now();
   const r = layoutLine("DIE", opts({ pins: { letters: { 1: { h: 1e5 } }, joins: {} } }));
-  expect(performance.now() - t0).toBeLessThan(500);
+  expect(performance.now() - t0).toBeLessThan(500 * SLOW);
   expect(r.warnings).toEqual(["Pin bei „DI“ nicht erfüllbar"]); // kein Folgehinweis für „IE“: das I trägt seinen Pin nicht
   expect(r.variants[0].glyphs.find((g) => g.index === 1)!.inst.p.h).toBe(1);
 });
@@ -327,7 +328,7 @@ test("Block: das Seitenverhältnis wirkt (1:1 höher als 2:1)", () => {
 test("Block: langer Text (60 Wörter) in unter 1 s", () => {
   const t = Array.from({ length: 60 }, (_, i) => ["DIE", "FLÄCHE", "Wiener", "Werkstätte", "HAGEN", "aus"][i % 6]).join(" ");
   const t0 = performance.now(), v = block(t, 1);
-  expect(performance.now() - t0).toBeLessThan(1000);
+  expect(performance.now() - t0).toBeLessThan(1000 * SLOW);
   expect(v.lines).toBeLessThanOrEqual(6);
 });
 

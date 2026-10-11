@@ -97,7 +97,7 @@ test("Unterschneidung: verbundene Paare stehen wie in der Engine, freie Paare mi
   expect(k.get("H I")).toBeUndefined(); // zwei Stämme: Seitenabstände reichen, keine Unterschneidung nötig
 });
 
-test("Export hält keine Layouts fest: Spitze unter 1 GB", () => {
+test.skipIf(process.platform !== "darwin")("Export hält keine Layouts fest: Spitze unter 1 GB", () => { // misst mit macOS-`time -l`
   const r = Bun.spawnSync(["/usr/bin/time", "-l", "bun", "tools/export-font.ts"], { stderr: "pipe", stdout: "pipe" });
   expect(r.success).toBe(true);
   const rss = Number(/(\d+)\s+maximum resident set size/.exec(r.stderr.toString())?.[1]);

@@ -1,0 +1,2 @@
+[test]
+timeout = 30000 # schwere Prüfungen (Satzzeichen-Paare, Blöcke) brauchen auf CI-Rechnern länger als 5 s
