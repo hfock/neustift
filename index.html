@@ -4,6 +4,10 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Neustift – Werkstatt</title>
+    <style>
+      /* Webfont als eigene Datei, nicht in die CSS gebündelt: Dev-Server liefert dist/, `bun run web` legt sie nach web/ */
+      @font-face { font-family: "Neustift"; src: url("/Neustift-Regular.woff2") format("woff2"); font-display: swap; }
+    </style>
     <link rel="stylesheet" href="./src/site.css" />
     <style>
       main {

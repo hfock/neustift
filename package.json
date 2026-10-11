@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bun --port=3457 ./index.html ./font.html",
+    "dev": "test -f dist/Neustift-Regular.woff2 || bun run font && bun tools/dev.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit -p .",
     "sheet": "bun tools/sheet.ts",
