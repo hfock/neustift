@@ -1,7 +1,8 @@
 import { expect, test } from "bun:test";
 import hagen from "../presets/hagen-aad-fock.json";
-import { joinOptions, layoutLine, type Options, type Pins } from "../src/engine";
-import { GLYPHS } from "../src/glyphs";
+import { joinOptions, layoutLine, layoutText, type Options, type Pins } from "../src/engine";
+import { minDist } from "../src/geom";
+import { GLYPHS, cutTop } from "../src/glyphs";
 import { lightGap } from "../src/rules";
 import { FLAECHE_1902 } from "../src/style";
 
@@ -241,4 +242,151 @@ test("Wortabstand nach der Tinte, aber nie enger als zwischen den Wortkästen (w
   expect(step("DA VOR")).toBeGreaterThanOrEqual(FLAECHE_1902.wordGap - 1); // sonst liest es sich als „DAVOR“
   expect(step("AUF ALLE")).toBeGreaterThanOrEqual(FLAECHE_1902.wordGap - 1);
   expect(Math.round(step("DIE FLÄCHE"))).toBe(FLAECHE_1902.wordGap); // senkrechte Seiten: Tinte und Kasten gleich
+});
+
+const block = (t: string, aspect: number | null) => layoutText(t, { ...opts(), aspect }).variants[0];
+const rows = (v: ReturnType<typeof block>) => {
+  const ys = [...new Set(v.glyphs.map((g) => g.y ?? 0))].sort((a, b) => b - a);
+  return ys.map((y) => v.glyphs.filter((g) => (g.y ?? 0) === y));
+};
+const ext = (gs: { x: number; inst: { prof: { minX: number; maxX: number } } }[]) =>
+  Math.max(...gs.map((g) => g.x + g.inst.prof.maxX)) - Math.min(...gs.map((g) => g.x + g.inst.prof.minX));
+
+/** Sichtbare Tinte wie im Renderer: zwischen Unterlänge und Oberkante des Buchstabens. */
+const visible = (gs: ReturnType<typeof block>["glyphs"]) =>
+  gs.flatMap((g) => {
+    const top = Math.min(FLAECHE_1902.capHeight, cutTop(g.inst.def, g.inst.p, FLAECHE_1902)), d = g.inst.def.desc ?? 0;
+    return g.inst.ink.filter((q) => q.y >= -d && q.y <= top).map((q) => ({ x: q.x + g.x, y: q.y + (g.y ?? 0) }));
+  });
+test("Block: HAGEN AAD FOCK bei 2:1 → HAGEN / AAD FOCK, gleich breit", () => {
+  const r = rows(block("HAGEN AAD FOCK", 2));
+  expect(r.map((g) => g.map((x) => x.char).join(""))).toEqual(["HAGEN", "AADFOCK"]);
+  expect(Math.abs(ext(r[0]) - ext(r[1]))).toBeLessThanOrEqual(1);
+});
+
+test("Block: Enter erzwingt den Umbruch", () => {
+  expect(rows(block("DIE\nFLÄCHE", 1)).map((g) => g.map((x) => x.char).join(""))).toEqual(["DIE", "FLÄCHE"]);
+});
+
+test("Block: Zeilen eng, kleinste Lichtweite = Buchstabenabstand", () => {
+  const r = rows(block("HAGEN AAD FOCK", 2));
+  const d = minDist(visible(r[0]), 0, visible(r[1]), 0, 1000); // sichtbare Tinte: Strichenden ragen ungeschnitten über das Band
+  expect(Math.abs(d - FLAECHE_1902.gap)).toBeLessThanOrEqual(1);
+});
+
+test("Block: frei ohne Enter ist eine Zeile wie layoutLine", () => {
+  for (const t of ["DIE FLÄCHE", "Hagen Spiegel", "WIENER WERKSTÄTTE"]) {
+    const a = layoutText(t, { ...opts(), aspect: null }).variants[0], b = layoutLine(t, opts()).variants[0];
+    expect(a.glyphs.map((g) => [g.char, g.x])).toEqual(b.glyphs.map((g) => [g.char, g.x]));
+  }
+});
+
+test("Block: Pins hinter dem Umbruch treffen den richtigen Buchstaben", () => {
+  const v = layoutText("AB\nCF", { ...opts(), aspect: 1, pins: { letters: { 4: { w: 330 } }, joins: {} } }).variants[0];
+  expect(v.glyphs.find((g) => g.index === 4)!.char).toBe("F");
+  expect(v.glyphs.find((g) => g.index === 4)!.inst.p.w).toBe(330);
+});
+
+const ratio = (v: ReturnType<typeof block>) => v.width / v.height;
+
+test("Block: Lichtweite = Buchstabenabstand in allen Varianten, auch mit Unter- und Oberlängen", () => {
+  const { variants } = layoutText("agypq\nThklb", { ...opts(), aspect: null });
+  expect(variants.length).toBeGreaterThan(1);
+  for (const v of variants) {
+    const [a, b] = rows(v);
+    expect(Math.abs(minDist(visible(a), 0, visible(b), 0, 1000) - FLAECHE_1902.gap)).toBeLessThanOrEqual(1);
+  }
+});
+
+test("Block: Höhe und Zeilenzahl", () => {
+  const one = layoutLine("DIE FLÄCHE", opts()).variants[0];
+  expect([one.lines, one.height]).toEqual([1, FLAECHE_1902.capHeight]);
+  const v = block("agypq\nThklb", null);
+  expect(v.lines).toBe(2);
+  expect(v.height).toBe(FLAECHE_1902.capHeight - Math.min(...v.glyphs.map((g) => g.y! - (g.inst.def.desc ?? 0))));
+});
+
+test("Block: höchstens 6 Zeilen", () => {
+  const { variants } = layoutText("A B C D E F G H I J K L", { ...opts(), aspect: 1 / 2 });
+  for (const v of variants) expect(v.lines).toBeLessThanOrEqual(6);
+});
+
+test("Block: Varianten unterscheiden sich auch im Umbruch", () => {
+  const { variants } = layoutText("HAGEN AAD FOCK", { ...opts(), aspect: 2 });
+  const breaks = new Set(variants.map((v) => rows(v).map((r) => r.map((g) => g.char).join("")).join("/")));
+  expect(breaks.size).toBeGreaterThan(1);
+});
+
+test("Block: das Seitenverhältnis wirkt (1:1 höher als 2:1)", () => {
+  const t = "DIE FLÄCHE IST EINE ZEITSCHRIFT AUS", sq = block(t, 1), wide = block(t, 2);
+  expect(sq.lines).toBeGreaterThanOrEqual(3);
+  expect(Math.abs(Math.log(ratio(sq)))).toBeLessThan(Math.abs(Math.log(ratio(wide))));
+});
+
+test("Block: langer Text (60 Wörter) in unter 1 s", () => {
+  const t = Array.from({ length: 60 }, (_, i) => ["DIE", "FLÄCHE", "Wiener", "Werkstätte", "HAGEN", "aus"][i % 6]).join(" ");
+  const t0 = performance.now(), v = block(t, 1);
+  expect(performance.now() - t0).toBeLessThan(1000);
+  expect(v.lines).toBeLessThanOrEqual(6);
+});
+
+test("Block: Hinweis „Zielbreite nicht erreichbar“, wenn eine Zeile nicht auf Blockbreite kommt (Spec 4.3), einzeilig frei nicht", () => {
+  const ZIEL = "Zielbreite nicht erreichbar – nächstbeste Breite gezeigt";
+  expect(layoutText("A\nB\nCCCCC", { ...opts(), aspect: null }).warnings).toContain(ZIEL);
+  expect(layoutText("DIE FLÄCHE", { ...opts(), aspect: 1 }).warnings).not.toContain(ZIEL); // seit der Anpassungsrunde gesperrt und bündig
+  expect(layoutText("A\nB\nCCCCC", { ...opts({ targetWidth: 100 }), aspect: null }).warnings).toContain(ZIEL);
+  expect(layoutText("DIE FLÄCHE", { ...opts(), aspect: null }).warnings).not.toContain(ZIEL);
+});
+
+test("Block (Hagen): kurze Zeilen gesperrt und bündig – DIE / FLÄCHE bei 1:1 gleich breit, ohne Hinweis", () => {
+  const r = layoutText("DIE FLÄCHE", { ...opts(), aspect: 1 });
+  const [a, b] = rows(r.variants[0]);
+  expect([a, b].map((g) => g.map((x) => x.char).join(""))).toEqual(["DIE", "FLÄCHE"]);
+  expect(Math.abs(ext(a) - ext(b))).toBeLessThanOrEqual(1);
+  expect(r.warnings).toEqual([]);
+});
+
+test("Block (Hagen): HAGEN AAD FOCK – 1:1 drei Zeilen, 2:1 HAGEN / AAD FOCK, alle bündig", () => {
+  const sq = rows(block("HAGEN AAD FOCK", 1)), wide = rows(block("HAGEN AAD FOCK", 2));
+  expect(sq.map((g) => g.map((x) => x.char).join(""))).toEqual(["HAGEN", "AAD", "FOCK"]);
+  expect(wide.map((g) => g.map((x) => x.char).join(""))).toEqual(["HAGEN", "AADFOCK"]);
+  for (const r of [sq, wide]) expect(Math.max(...r.map(ext)) - Math.min(...r.map(ext))).toBeLessThanOrEqual(1);
+});
+
+// Toleranz Faktor 1,6: umbrochen wird nur an Wortgrenzen, die Blockbreite ist die breiteste Zeile (nie künstlich verbreitert)
+// und die Höhe wächst in Zeilensprüngen von rund 750 bei Blöcken von 1500–3000 – genauer geht es mit ganzen Wörtern nicht.
+test("Block: Seitenverhältnis des Blocks liegt nahe am gewählten (Faktor ≤ 1,6)", () => {
+  const cases: [string, number][] = [
+    ["HAGEN AAD FOCK", 2], ["HAGEN AAD FOCK", 1], ["DIE FLÄCHE", 1],
+    ["DIE FLÄCHE IST EINE ZEITSCHRIFT AUS", 1], ["DIE FLÄCHE IST EINE ZEITSCHRIFT AUS", 2],
+    ["Die Fläche ist eine Zeitschrift aus Wien", 1], ["Die Fläche ist eine Zeitschrift aus Wien", 1 / 2],
+  ];
+  for (const [t, a] of cases) expect(Math.abs(Math.log(ratio(block(t, a)) / a))).toBeLessThanOrEqual(Math.log(1.6));
+});
+
+test("Block: Zeilenabstand = Buchstabenabstand für die Prüfblatt-Texte", () => {
+  for (const [t, a] of [["HAGEN AAD FOCK", 2], ["HAGEN AAD FOCK", 1], ["DIE FLÄCHE", 1], ["Wiener Werkstätte", 2], ["Wiener Werkstätte", 2 / 3]] as const)
+    for (const v of [block(t, a)]) { // die Variante des Prüfblatts; alle Varianten prüft der Test mit agypq
+      const r = rows(v);
+      for (let k = 1; k < r.length; k++) expect(Math.abs(minDist(visible(r[k - 1]), 0, visible(r[k]), 0, 1000) - FLAECHE_1902.gap)).toBeLessThanOrEqual(1);
+    }
+});
+
+test("Block (Hagen 2): gesperrte Zeile löst Verbindungen – FOCK bei 1:1 gleichmäßig F – O – C – K", () => {
+  const v = block("HAGEN AAD FOCK", 1), r = rows(v), fock = r[2];
+  expect(fock.map((g) => g.char).join("")).toBe("FOCK");
+  expect([10, 11, 12].map((i) => v.joins[i].type)).toEqual(["none", "none", "none"]);
+  expect(Math.abs(ext(fock) - ext(r[0]))).toBeLessThanOrEqual(1);
+  // Lichtweite zwischen benachbarten Buchstaben (sichtbare Tinte): größte ≤ 1,5 × kleinste
+  const gaps = fock.slice(1).map((g, k) => minDist(visible([fock[k]]), 0, visible([g]), 0, 5000));
+  expect(Math.max(...gaps) / Math.min(...gaps)).toBeLessThanOrEqual(1.5);
+});
+
+test("Block (Hagen 2): gepinnte Verbindung bleibt in einer gesperrten Zeile", () => {
+  const pins = { letters: {}, joins: { 12: { type: "share", sub: "term" } as const } };
+  const v = layoutText("HAGEN AAD FOCK", { ...opts({ pins }), aspect: 1 }).variants[0], r = rows(v);
+  expect(r.map((g) => g.map((x) => x.char).join(""))).toEqual(["HAGEN", "AAD", "FOCK"]);
+  expect(v.joins[12]).toMatchObject({ type: "share", sub: "term" });
+  expect([v.joins[10].type, v.joins[11].type]).toEqual(["none", "none"]); // die automatischen sind gelöst
+  expect(Math.abs(ext(r[2]) - ext(r[0]))).toBeLessThanOrEqual(1);
 });

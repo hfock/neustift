@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { layoutLine, type Layout } from "../src/engine";
+import { layoutLine, layoutText, type Layout } from "../src/engine";
 import { L, stroke } from "../src/geom";
 import type { GlyphDef } from "../src/glyphs";
 import { svgString } from "../src/render";
@@ -110,4 +110,46 @@ test("Strich mit eigener Oberkante (k-Arm): eigener Beschnitt nur für diesen St
   const svg = svgString(k, S, { ink: "#000", paper: null });
   expect(svg).toContain('<clipPath id="kairos-h3000"><rect x="-1000" y="0" width="3000" height="300"/></clipPath>');
   expect(svg).toMatch(/<g data-i="0" transform="translate\([^)]+\)"><path [^>]+\/><g clip-path="url\(#kairos-h3000\)"><path [^>]+\/><\/g><path /);
+});
+
+test("Block: viewBox umfasst beide Zeilen, zweite Zeile mit translate(x y)", () => {
+  const b = layoutText("DIE\nFLÄCHE", { style: S, interlock: 0.5, targetWidth: null, pins: { letters: {}, joins: {} }, aspect: null }).variants[0];
+  expect(b.lines).toBe(2);
+  const svg = svgString(b, S, { ink: "#000", paper: "#fff", interactive: true, selected: 4, pinned: [5] });
+  const h = Number(svg.match(/viewBox="[^"]+ ([\d.]+)"/)![1]);
+  expect(h).toBe(Math.round((b.height + 120) * 10) / 10);
+  const f = b.glyphs.find((g) => g.index === 4)!; // F in Zeile 2
+  expect(f.y!).toBeLessThan(0);
+  const tr = `translate(${Math.round(f.x * 10) / 10} ${Math.round(f.y! * 10) / 10})`;
+  expect(svg).toContain(`<g data-i="4" transform="${tr}"><rect class="sel"`);
+  expect(svg).toContain(`<g data-i="4" transform="${tr}"`);
+  const l = b.glyphs.find((g) => g.index === 5)!; // L in Zeile 2, gepinnt
+  expect(svg).toContain(`<g data-i="5" transform="translate(${Math.round(l.x * 10) / 10} ${Math.round(l.y! * 10) / 10})"><rect class="hit"`);
+  expect(svg).toMatch(/<g data-i="5"[^>]*><rect class="hit"[^>]*\/><circle class="pin"/);
+  expect(svg.match(/<rect x="-10000000" y="[-\d.]+" width="20000000" height="700"\/>/g)!.length).toBe(2); // Zeilenband je Zeile
+  expect(svg).not.toContain("NaN");
+});
+
+test("Block: frei ohne Enter ergibt dasselbe SVG wie layoutLine", () => {
+  const o = { style: S, interlock: 0.5, targetWidth: null, pins: { letters: {}, joins: {} } };
+  for (const t of ["DIE FLÄCHE", "WIEN, 12."]) {
+    const a = layoutText(t, { ...o, aspect: null }).variants[0], b = layoutLine(t, o).variants[0];
+    expect(svgString(a, S, { ink: "#000", paper: "#fff", interactive: true, selected: 1 })).toBe(svgString(b, S, { ink: "#000", paper: "#fff", interactive: true, selected: 1 }));
+  }
+});
+
+test("Block: jede Zeile in ihrem eigenen Band – ineinandergreifende Zeilen schneiden die Füße der oberen Zeile", () => {
+  const b = layoutText("AXA\nwas", { style: S, interlock: 0.5, targetWidth: null, pins: { letters: {}, joins: {} }, aspect: null }).variants[0];
+  const y2 = b.glyphs.find((g) => g.index === 4)!.y!;
+  expect(y2).toBeGreaterThan(-S.capHeight); // Band der unteren Zeile reicht über die Grundlinie der oberen
+  const svg = svgString(b, S, { ink: "#000", paper: null });
+  const id2 = `kairos-zeile-${Math.round(-y2 * 10)}`;
+  expect(svg).toContain('<clipPath id="kairos-zeile"><rect x="-10000000" y="0" width="20000000" height="700"/></clipPath><g clip-path="url(#kairos-zeile)">');
+  expect(svg).toContain(`<clipPath id="${id2}"><rect x="-10000000" y="${Math.round(y2 * 10) / 10}" width="20000000" height="700"/></clipPath><g clip-path="url(#${id2})">`);
+  // Zeile 1 (A X A) liegt im Band kairos-zeile, Zeile 2 (w a s) im eigenen; jedes Band mit genau einem Rechteck
+  const band1 = svg.slice(svg.indexOf('url(#kairos-zeile)'), svg.indexOf(`<clipPath id="${id2}"`));
+  for (const i of [0, 1, 2]) expect(band1).toContain(`data-i="${i}"`);
+  for (const i of [4, 5, 6]) expect(band1).not.toContain(`data-i="${i}"`);
+  const band2 = svg.slice(svg.indexOf(`url(#${id2})`));
+  for (const i of [4, 5, 6]) expect(band2).toContain(`data-i="${i}"`);
 });

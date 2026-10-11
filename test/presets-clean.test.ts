@@ -7,7 +7,7 @@ import { FLAECHE_1902 } from "../src/style";
 const KNOWN = new Set(["die-flaeche"]);
 const valid: State = {
   text: "DIE FLÄCHE", interlock: 0.5, target: null, style: { ...FLAECHE_1902 }, variant: 0, pins: { letters: {}, joins: {} },
-  ink: "#1d1a17", paper: "#ece2cf", transparent: false, overlay: null, showOverlay: false, opacity: 0.5, selected: null,
+  ink: "#1d1a17", paper: "#ece2cf", transparent: false, overlay: null, showOverlay: false, opacity: 0.5, selected: null, aspect: null,
 };
 
 test("cleanPins: nur endliche Zahlen und bekannte Verbindungen", () => {
@@ -53,4 +53,15 @@ test("cleanState: Stand von vor M4 ohne x-Höhe bleibt gültig und bekommt den G
   expect(st!.style.xHeight).toBe(300);
   expect(st!.text).toBe(valid.text);
   expect(cleanState({ ...valid, style: { ...old, xHeight: null } }, KNOWN)).toBeNull(); // null würde den Grundwert überschreiben
+});
+
+test("Seitenverhältnis: fehlend = frei (null), 2 gilt, −1/0/unendlich/Text abgelehnt", () => {
+  const { aspect: _, ...old } = valid; // Stand von vor M3
+  expect(cleanState(old, KNOWN)!.aspect).toBeNull();
+  expect(cleanState({ ...valid, aspect: 2 }, KNOWN)!.aspect).toBe(2);
+  expect(cleanState({ ...valid, aspect: null }, KNOWN)!.aspect).toBeNull();
+  for (const bad of [-1, 0, Infinity, NaN, "2"]) expect(cleanState({ ...valid, aspect: bad }, KNOWN)).toBeNull();
+  expect(cleanPreset(dieFlaeche, KNOWN)!.aspect).toBeNull();
+  expect(cleanPreset({ ...dieFlaeche, aspect: 2 }, KNOWN)!.aspect).toBe(2);
+  for (const bad of [-1, 0, Infinity, "2"]) expect(cleanPreset({ ...dieFlaeche, aspect: bad }, KNOWN)).toBeNull();
 });

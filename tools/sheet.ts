@@ -1,11 +1,12 @@
 // Prüfblatt: alle Glyphen einzeln plus beste Varianten der Testwörter → out/*.svg (+ PNG, falls Inkscape da ist)
 import { existsSync, mkdirSync, rmSync } from "node:fs";
-import { layoutLine } from "../src/engine";
+import { layoutText } from "../src/engine";
 import { svgString } from "../src/render";
 import { FLAECHE_1902 } from "../src/style";
 
 const INKSCAPE = "/Applications/Inkscape.app/Contents/MacOS/inkscape";
-const jobs: [string, string, number][] = [
+// [Datei, Text, Verschränkung, Seitenverhältnis Breite : Höhe (fehlend = frei, eine Zeile)]
+const jobs: [string, string, number, number?][] = [
   ["glyphen", "A B C D E F G H I J K L M N O", 0],
   ["glyphen-2", "P Q R S T U V W X Y Z Ä Ö Ü ẞ", 0],
   ["glyphen-klein", "a b c d e f g h i j k l m n o", 0],
@@ -18,10 +19,15 @@ const jobs: [string, string, number][] = [
   ["die-flaeche", "DIE FLÄCHE", 0.5],
   ["hagen-aad-fock", "HAGEN AAD FOCK", 0.5],
   ["hagen-aad-fock-wild", "HAGEN AAD FOCK", 1],
+  ["block-hagen-2-1", "HAGEN AAD FOCK", 0.5, 2],
+  ["block-hagen-1-1", "HAGEN AAD FOCK", 0.5, 1],
+  ["block-flaeche-1-1", "DIE FLÄCHE", 0.5, 1],
+  ["block-wiener-2-1", "Wiener Werkstätte", 0.5, 2],
+  ["block-wiener-2-3", "Wiener Werkstätte", 0.5, 2 / 3],
 ];
 mkdirSync("out", { recursive: true });
-for (const [name, text, interlock] of jobs) {
-  const { variants, warnings } = layoutLine(text, { style: FLAECHE_1902, interlock, targetWidth: null, pins: { letters: {}, joins: {} } });
+for (const [name, text, interlock, aspect = null] of jobs) {
+  const { variants, warnings } = layoutText(text, { style: FLAECHE_1902, interlock, targetWidth: null, pins: { letters: {}, joins: {} }, aspect });
   const file = `out/${name}.svg`;
   await Bun.write(file, svgString(variants[0], FLAECHE_1902, { ink: "#1d1a17", paper: "#ece2cf" }));
   const png = `out/${name}.png`;

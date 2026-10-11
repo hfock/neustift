@@ -11,6 +11,7 @@ export type Preset = {
   variant: number;
   pins: Pins;
   overlay?: OverlayRef;
+  aspect?: number | null; // Seitenverhältnis Breite : Höhe, fehlend = frei
 };
 /** Stand der Oberfläche, wie er im Browser-Speicher liegt. */
 export type State = {
@@ -27,11 +28,14 @@ export type State = {
   showOverlay: boolean;
   opacity: number;
   selected: number | null;
+  aspect: number | null;
 };
 
 const JOIN_TYPES = new Set(["none", "nest", "underrun", "share", "tail"]), JOIN_SUBS = new Set(["term", "stem", "leg", "cross"]);
 const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+/** Seitenverhältnis: fehlend oder null = frei; sonst endlich und > 0. undefined = ungültig. */
+const cleanAspect = (v: unknown) => (v === undefined || v === null ? null : isNum(v) && v > 0 ? v : undefined);
 const isColor = (v: unknown) => typeof v === "string" && /^#[0-9a-f]{6}$/i.test(v);
 /** Nur die Feinheiten-Regler dürfen Stilwerte ändern – und nur in ihrem Spielraum (wie in index.html); riesige Werte würden die Seite einfrieren. */
 const STYLE_RANGES: Record<string, [number, number]> = { stroke: [14, 44], barHigh: [420, 640], barLow: [60, 280], wordGap: [40, 400] };
@@ -61,8 +65,10 @@ export function cleanPreset(raw: unknown, known: ReadonlySet<string>): Preset | 
   if (raw.overlay !== undefined && !overlayOk(raw.overlay, known)) return null;
   const pins = cleanPins(raw.pins);
   if (!pins) return null;
+  const aspect = cleanAspect(raw.aspect);
+  if (aspect === undefined) return null;
   const variant = Number.isInteger(raw.variant) && (raw.variant as number) >= 0 ? (raw.variant as number) : 0;
-  return { ...(raw as Preset), text: raw.text.normalize("NFC"), variant, pins };
+  return { ...(raw as Preset), text: raw.text.normalize("NFC"), variant, pins, aspect };
 }
 
 /** Gespeicherten Oberflächen-Stand prüfen; null heißt: Standard verwenden statt abzustürzen. */
@@ -73,7 +79,9 @@ export function cleanState(raw: unknown, known: ReadonlySet<string>): State | nu
   const styleOk =
     isObj(st) &&
     Object.keys(base).every((k) => (k === "id" ? typeof st.id === "string" : k in STYLE_RANGES ? inStyleRange(k, st[k]) : (st[k] === undefined || st[k] === base[k]))); // fehlende feste Werte (ältere Stände, z. B. ohne xHeight) gelten als Grundwert
+  const aspect = cleanAspect(raw.aspect);
   const ok =
+    aspect !== undefined &&
     styleOk &&
     isColor(raw.ink) &&
     isColor(raw.paper) &&
@@ -85,5 +93,5 @@ export function cleanState(raw: unknown, known: ReadonlySet<string>): State | nu
     (raw.selected === null || Number.isInteger(raw.selected)) &&
     typeof raw.showOverlay === "boolean" &&
     typeof raw.transparent === "boolean";
-  return ok ? { ...(raw as State), style: { ...FLAECHE_1902, ...(st as Partial<Style>) }, text: raw.text.normalize("NFC") } : null;
+  return ok ? { ...(raw as State), style: { ...FLAECHE_1902, ...(st as Partial<Style>) }, text: raw.text.normalize("NFC"), aspect: aspect ?? null } : null;
 }

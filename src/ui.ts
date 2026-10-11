@@ -1,7 +1,8 @@
 import dieFlaeche from "../presets/die-flaeche.json";
 import hagen from "../presets/hagen-aad-fock.json";
+import hagenBlock from "../presets/hagen-aad-fock-block.json";
 import overlayUrl from "../reference/die-flaeche-overlay.jpg";
-import { joinOptions, layoutLine, type Layout, type Placed } from "./engine";
+import { joinOptions, layoutText, type Layout, type Placed } from "./engine";
 import { cutTop, type Params } from "./glyphs";
 import { svgString, type Overlay } from "./render";
 import { barLink, type Join } from "./rules";
@@ -13,7 +14,7 @@ type HandleKind = "h" | "w" | "bar" | "foot" | "top";
 
 const OVERLAYS: Record<string, string> = { "die-flaeche": overlayUrl };
 const OVERLAY_KEYS: ReadonlySet<string> = new Set(Object.keys(OVERLAYS));
-const BUILTIN: Preset[] = [dieFlaeche, hagen].map((p) => cleanPreset(p, OVERLAY_KEYS)).filter((p): p is Preset => p !== null);
+const BUILTIN: Preset[] = [dieFlaeche, hagen, hagenBlock].map((p) => cleanPreset(p, OVERLAY_KEYS)).filter((p): p is Preset => p !== null);
 const KEY = "kairos.state", PRESETS = "kairos.presets", SVGNS = "http://www.w3.org/2000/svg";
 const LABEL: Record<string, string> = {
   none: "keine",
@@ -25,6 +26,13 @@ const LABEL: Record<string, string> = {
   cross: "Querstrich teilen",
   tail: "Unterlänge unter den Nachbarn",
 };
+
+/** Seitenverhältnis-Regler: Stufen Breite : Höhe, null = frei. */
+const ASPECTS = [null, 3, 2, 1.5, 1, 2 / 3, 0.5], ASPECT_NAMES = ["frei", "3:1", "2:1", "3:2", "1:1", "2:3", "1:2"];
+/** Stufe zum Wert; Werte aus bearbeiteten Vorlagen ohne eigene Stufe landen auf der nächsten. */
+const aspectStop = (a: number | null) =>
+  a === null ? 0 : ASPECTS.reduce<number>((best, v, k) => (v !== null && Math.abs(Math.log(v / a)) < Math.abs(Math.log((ASPECTS[best] ?? Infinity) / a)) ? k : best), 1);
+const aspectName = (a: number | null) => (a === null || ASPECTS.includes(a) ? ASPECT_NAMES[aspectStop(a)] : `${Math.round(a * 100) / 100}:1`);
 
 const $ = <T extends HTMLElement = HTMLInputElement>(id: string) => document.getElementById(id) as T;
 const jkey = (j: Join) => j.sub ?? j.type;
@@ -59,6 +67,7 @@ const fromPreset = (p: Preset, keep?: State): State => ({
   showOverlay: false,
   opacity: keep?.opacity ?? 0.5,
   selected: null,
+  aspect: p.aspect ?? null,
 });
 
 // Browser-Speicher ist eine Vertrauensgrenze: Kaputtes führt zum Standard statt zum Absturz
@@ -91,8 +100,20 @@ function restore(from: string[], to: string[]) {
   syncControls();
 }
 
+// Neu setzen erst nach einer Tipp-Pause: lange Blöcke brauchen bis ~2 s je Durchlauf.
+// flush() übernimmt eine wartende Eingabe sofort – vor Rückgängig, Klick und Ziehen, sonst gälten alte Indizes
+let typing = 0;
+function flush() {
+  if (!typing) return;
+  clearTimeout(typing);
+  typing = 0;
+  update();
+  syncControls();
+  commit();
+}
+
 function update() {
-  const res = layoutLine(state.text, { style: state.style, interlock: state.interlock, targetWidth: state.target, pins: state.pins });
+  const res = layoutText(state.text, { style: state.style, interlock: state.interlock, targetWidth: state.target, pins: state.pins, aspect: state.aspect });
   variants = res.variants;
   state.variant = Math.max(0, Math.min(state.variant, variants.length - 1));
   layout = variants[state.variant] ?? null;
@@ -126,7 +147,7 @@ function renderPreview() {
   const ink = box.querySelector("#ink") as SVGGraphicsElement;
   if (!g) return;
   const layer = document.createElementNS(SVGNS, "g"); // oberste Ebene, damit Nachbar-Klickflächen die Griffe nicht verdecken
-  layer.setAttribute("transform", `translate(${g.x} 0)`);
+  layer.setAttribute("transform", `translate(${g.x} ${g.y ?? 0})`);
   ink.appendChild(layer);
   const size = 14 / (ink.getScreenCTM()?.a || 1); // 14 px, egal wie stark die Vorschau verkleinert ist
   for (const h of handles(g)) {
@@ -159,6 +180,7 @@ function fontPoint(e: PointerEvent) {
 
 /** Griff ziehen: Wert wird als Pin festgehalten, Engine rechnet live neu. */
 function drag(e: PointerEvent, start: Placed, kind: HandleKind) {
+  if (typing) return flush(); // Griffe gehören zum alten Text: erst neu setzen
   e.preventDefault();
   e.stopPropagation();
   const i = start.index, def = start.inst.def, s = state.style;
@@ -174,11 +196,11 @@ function drag(e: PointerEvent, start: Placed, kind: HandleKind) {
     const ev = last!;
     const g = layout?.glyphs.find((q) => q.index === i);
     if (!g) return;
-    const pt = fontPoint(ev), x = pt.x - g.x, p = g.inst.p;
+    const pt = fontPoint(ev), x = pt.x - g.x, y = pt.y - (g.y ?? 0), p = g.inst.p; // Buchstabenkoordinaten, auch in tieferen Zeilen
     let v: Params;
-    if (kind === "h") v = { h: clamp("h", pt.y / s.capHeight) };
+    if (kind === "h") v = { h: clamp("h", y / s.capHeight) };
     else if (kind === "w") v = { w: clamp("w", p.w + x - g.inst.prof.maxX) };
-    else if (kind === "bar") v = { bar: pt.y < s.capHeight / 2 ? 1 : 0 };
+    else if (kind === "bar") v = { bar: y < s.capHeight / 2 ? 1 : 0 };
     else if (kind === "foot") {
       const end = g.inst.docks.find((d) => d.kind === "foot") as { end: number };
       v = { foot: clamp("foot", p.foot + x - end.end) };
@@ -246,6 +268,7 @@ function renderVariants() {
       b.textContent = String(k + 1);
       b.className = k === state.variant ? "on" : "";
       b.onclick = () => {
+        flush(); // Variante gehört zum neuen Text
         state.variant = k;
         update();
         commit();
@@ -256,7 +279,9 @@ function renderVariants() {
 }
 
 function syncControls() {
-  $("text").value = state.text;
+  if ($("text").value !== state.text) $("text").value = state.text; // gleicher Text: Schreibmarke bleibt, wo sie ist
+  $("aspect").value = String(aspectStop(state.aspect));
+  $("aspectName").textContent = aspectName(state.aspect);
   $("interlock").value = String(state.interlock);
   $("targetFree").checked = state.target === null;
   $("target").disabled = state.target === null;
@@ -273,6 +298,7 @@ function syncControls() {
 // --- Bedienung -------------------------------------------------------------
 
 $("preview").addEventListener("click", (e) => {
+  if (typing) return flush(); // Klick traf den alten Text: erst neu setzen, dann wählen
   if ((e.target as Element).closest(".handle")) return; // Griff: Auswahl bleibt
   const hit = (e.target as Element).closest("[data-i]");
   state.selected = hit ? Number(hit.getAttribute("data-i")) : null;
@@ -288,10 +314,16 @@ $("text").addEventListener("input", () => {
   state.variant = 0;
   state.overlay = null;
   state.showOverlay = false;
-  update();
-  syncControls();
-  commit();
+  clearTimeout(typing);
+  typing = setTimeout(flush, 200) as unknown as number;
 });
+
+$("aspect").addEventListener("input", () => {
+  state.aspect = ASPECTS[Number($("aspect").value)] ?? null;
+  $("aspectName").textContent = aspectName(state.aspect);
+  update();
+});
+$("aspect").addEventListener("change", commit);
 
 const sliders: [string, (v: number) => void][] = [
   ["interlock", (v) => (state.interlock = v)],
@@ -355,12 +387,14 @@ $("resetLetter").addEventListener("click", () => {
 addEventListener("keydown", (e) => {
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
     e.preventDefault();
+    flush(); // getippter Text wird erst ein Schritt, dann geht Rückgängig genau einen zurück
     if (e.shiftKey) restore(future, past);
     else restore(past, future);
     return;
   }
   if ((e.target as Element).closest?.("input, select, textarea")) return; // Regler und Felder behalten ihre Pfeiltasten
   const step = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+  if (step) flush();
   if (step && variants[state.variant + step]) {
     state.variant += step;
     update();
@@ -377,6 +411,8 @@ function renderPresets() {
     `<option value="">Vorlagen …</option>` + presets().map((p, k) => `<option value="${k}">${escapeHtml(p.name)}</option>`).join("");
 }
 function usePreset(p: Preset) {
+  clearTimeout(typing); // getippter Text wird von der Vorlage ersetzt
+  typing = 0;
   state = fromPreset(p, state);
   update();
   syncControls();
@@ -390,6 +426,7 @@ const toPreset = (name: string): Preset => ({
   controls: { targetWidth: state.target, interlock: state.interlock },
   variant: state.variant,
   pins: structuredClone(state.pins),
+  aspect: state.aspect,
   ...(state.overlay ? { overlay: state.overlay } : {}),
 });
 $("preset").addEventListener("change", () => {
@@ -439,10 +476,12 @@ const slug = (t: string) =>
 const exportSvg = () => (layout ? svgString(layout, state.style, { ink: state.ink, paper: state.transparent ? null : state.paper }) : null);
 
 $("exportSvg").addEventListener("click", () => {
+  flush(); // exportiert den getippten Text, nicht den vorigen
   const t = exportSvg();
   if (t) download(`${slug(state.text)}.svg`, new Blob([t], { type: "image/svg+xml" }));
 });
 $("exportPng").addEventListener("click", async () => {
+  flush();
   const t = exportSvg();
   if (!t) return;
   const url = URL.createObjectURL(new Blob([t], { type: "image/svg+xml" }));
