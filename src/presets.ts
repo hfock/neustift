@@ -93,5 +93,5 @@ export function cleanState(raw: unknown, known: ReadonlySet<string>): State | nu
     (raw.selected === null || Number.isInteger(raw.selected)) &&
     typeof raw.showOverlay === "boolean" &&
     typeof raw.transparent === "boolean";
-  return ok ? { ...(raw as State), style: { ...FLAECHE_1902, ...(st as Partial<Style>) }, text: raw.text.normalize("NFC"), aspect: aspect ?? null } : null;
+  return ok ? { ...(raw as State), style: { ...FLAECHE_1902, ...(st as Partial<Style>), ...((st as Partial<Style>).wordGap === 136 ? { wordGap: FLAECHE_1902.wordGap } : {}) } /* alter Standard-Wortabstand 136 → neuer */, text: raw.text.normalize("NFC"), aspect: aspect ?? null } : null;
 }
