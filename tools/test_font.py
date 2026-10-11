@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["fonttools[woff]>=4.66", "ufo2ft>=3.9", "ufoLib2>=0.18", "skia-pathops>=0.9", "uharfbuzz>=0.50"]
+# dependencies = ["fonttools[woff]>=4.66", "ufo2ft>=3.9", "ufoLib2>=0.18", "skia-pathops>=0.9", "uharfbuzz>=0.50", "typing_extensions==4.15.0"]
 # ///
 """Font prüfen (Spec M2 §7): Zeichentabelle, Konturen, Formung mit harfbuzz, Tintenfläche gegen die Engine."""
 import json
@@ -18,12 +18,12 @@ from build_font import BUILD, DIST, outline  # noqa: E402  gleiche Strich-Streck
 OTF = DIST / "Neustift-Regular.otf"
 PUNCT = {"hyphen", "endash", "parenleft", "parenright", "period", "comma", "colon", "semicolon", "exclam", "question", "slash", "quotesingle",
          "quoteright", "quotedbl", "quotedblbase", "quotedblleft", "quotesinglbase", "quoteleft", "guillemotleft", "guillemotright"}
-ARM = {("E", "hyphen"), ("F", "hyphen"), ("L", "hyphen"), ("T", "hyphen"), ("hyphen", "T"), ("t", "hyphen")}
-SLANT = {("A", "hyphen"), ("hyphen", "Z"), ("hyphen", "two"), ("endash", "two")}
+ARM = {("E", "hyphen"), ("F", "hyphen"), ("L", "hyphen"), ("T", "hyphen"), ("hyphen", "T"), ("t", "hyphen"), ("K", "hyphen")}
+SLANT = {("A", "hyphen"), ("hyphen", "Z"), ("hyphen", "two"), ("endash", "two"), ("hyphen", "X"), ("V", "hyphen"), ("hyphen", "Y")}
 # Feinschliff-Beispiele: Text, Mitte je Strich/Klammer (x = x-Höhen-Mitte, c = Versalhöhen-Mitte)
 FEIN = [("E-g", "x"), ("E-G", "c"), ("F-a", "x"), ("L-T", "c"), ("H-H", "c"), ("T-Shirt", "c"), ("Ost-West", "c"), ("e-mail", "x"), ("E-mail", "x"),
         ("x-Achse", "c"), ("A-Z", "c"), ("10-20", "c"), ("10–20 Uhr", "c"), ("und – so", "x"), ("(neu)", "xx"), ("(NEU)", "cc"), ("(Hagen)", "cc"),
-        ("(neu und alt)", "xx"), ("FF.", ""), ("T.", ""), ("r.", ""), ("„Typ“", ""), ("L'", ""), ("e- und", "x"), ("A-", "c")]
+        ("(neu und alt)", "xx"), ("FF.", ""), ("T.", ""), ("r.", ""), ("„Typ“", ""), ("L'", ""), ("e- und", "x"), ("A-", "c"), ("K-X", "c"), ("V-Y", "c"), ("k-x", "x"), ("x-y", "x")]
 fails: list[str] = []
 
 

@@ -26,7 +26,7 @@ test("Feature-Datei nennt nur vorhandene Glyphen und enthält liga, dlig und cal
   expect(data.fea).toContain("lookup TAIL_RIGHT");
   expect(data.fea).toContain("lookup TRIM_LEFT");
   const calt = /feature calt \{([^}]*)\}/.exec(data.fea)![1].match(/lookup \w+/g);
-  expect(calt).toEqual(["LOWER_DASH", "LOWER_PAREN_OPEN", "LOWER_PAREN_CLOSE", "NEST_LEFT", "NEST_RIGHT", "UNDERRUN_LEFT", "UNDERRUN_RIGHT", "TERM_LEFT", "CROSS_LEFT", "TAIL_RIGHT", "TRIM_LEFT"].map((l) => `lookup ${l}`));
+  expect(calt as string[] | null).toEqual(["LOWER_DASH", "LOWER_PAREN_OPEN", "LOWER_PAREN_CLOSE", "NEST_LEFT", "NEST_RIGHT", "UNDERRUN_LEFT", "UNDERRUN_RIGHT", "TERM_LEFT", "CROSS_LEFT", "TAIL_RIGHT", "TRIM_LEFT"].map((l) => `lookup ${l}`));
 });
 
 test("Kleinbuchstaben verschränkt: Querstrich teilen, Unterlänge nach links, f-Haken kürzen", () => {

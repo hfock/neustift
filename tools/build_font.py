@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["fonttools[woff]>=4.66", "ufo2ft>=3.9", "ufoLib2>=0.18", "skia-pathops>=0.9"]
+# dependencies = ["fonttools[woff]>=4.66", "ufo2ft>=3.9", "ufoLib2>=0.18", "skia-pathops>=0.9", "typing_extensions==4.15.0"]
 # ///
 """Neustift bauen: build/kairos.json + build/features.fea → dist/Neustift-Regular.otf und .woff2 (Spec M2 §5.2)."""
 import json

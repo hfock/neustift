@@ -37,7 +37,7 @@ export function spacing(l: Inst, r: Inst, s: Style, minY = 0, lock?: Params): nu
     const bl = band(l, r, "left"), br = band(r, l, "right"); // Band des Zeichens gegen die Tinte des Nachbarn
     if (bl) dx = Math.max(dx, s.gap - (inkMin(r, bl) - inkMax(l, ALL)));
     if (br) dx = Math.max(dx, s.gap - (inkMin(r, ALL) - inkMax(l, br)));
-    for (let i = 0, g; i < 20 && (g = lightGap(l, 0, r, dx, s.gap)) < s.gap - 1; i++) dx += s.gap - g;
+    for (let i = 0, g; i < 20 && (g = lightGap(l, 0, r, dx, s.gap + 1)) < s.gap; i++) dx += s.gap + 0.5 - g; // halbe Einheit Reserve gegen das Runden im Font
     return dx;
   }
   if (l.def.loose) {
@@ -66,11 +66,11 @@ const inkMin = (i: Inst, [lo, hi]: [number, number]) => i.ink.reduce((m, q) => (
 /**
  * Darf das flache Satzzeichen p in die Tinte des Nachbarn n einrücken (side: die p zugewandte Seite von n)? Ja, wenn
  * - die zugewandte Seite auf Höhe von p eine gerade Schräge ist (Mittellinie 7°–75° gegen die Senkrechte; A-Beine stehen nur 14° schräg): „A-Z“, „10-20“;
- * - oder über/unter p (im Band) kein gerader, waagrechter Strich (Arm, Balken, Fuß, Querstrich) über diese Seite hinausragt: Y, K mit schrägen Armen.
+ * - oder über/unter p (im Band) kein gerader, waagrechter Strich (Arm, Balken, Fuß, Querstrich) über diese Seite hinausragt: Y mit schrägen Armen. K und k sind per noTuck ausgenommen.
  * Nein bei Stamm/Bogen mit waagrechtem Arm darüber oder darunter (E, F, L, T, t, f, r): dort bleibt das Zeichen aus der Tinte des Arms.
  */
 function tuckable(p: Inst, n: Inst, side: "left" | "right", band: [number, number]): boolean {
-  if (isPunct(n.def)) return false;
+  if (isPunct(n.def) || n.def.noTuck === side) return false; // Kerbe wie X, aber vor einem Stamm: per Glyphe, Geometrie trennt K und X nicht
   const [lo, hi] = yRange(p), out = side === "right" ? 1 : -1; // Richtung zum Satzzeichen
   let best: { x: number; sin: number; line: boolean } | null = null;
   for (const st of n.strokes) {

@@ -30,6 +30,7 @@ export interface GlyphDef {
   extend?(p: Params, x: number): Params; // Querstrich bis x (f, t)
   tailTo?(p: Params, x: number): Params; // Schwanz der Unterlänge bis x nach links (g, j, y)
   top?(s: Style): number; // eigene Beschnitt-Oberkante (v, w, x, y: x-Höhe)
+  noTuck?: "left" | "right"; // diese Seite gilt für Satzzeichen als Arm: nicht einrücken (K, k: der Strich in der Kerbe vor dem Stamm liest sich als Querstrich)
 }
 
 /** Unterlänge eines Buchstabens mit diesen Reglern (0 = keine). */
@@ -180,6 +181,7 @@ const glyphI: GlyphDef = {
 
 const glyphK: GlyphDef = {
   char: "K",
+  noTuck: "right",
   params: { h, w: R(180, 230, 280) },
   draw(p, s) {
     const j = s.barHigh * p.h; // Arme treffen sich auf der oberen Balkenlinie
@@ -941,6 +943,7 @@ const glyph_j: GlyphDef = {
 
 const glyph_k: GlyphDef = {
   char: "k",
+  noTuck: "right",
   params: { w: R(130, 160, 200) },
   draw(p, s) {
     // Arm und Bein treffen sich auf halber x-Höhe am Stamm; der Arm ragt schräg knapp über die x-Höhe und wird dort waagrecht beschnitten (wie der K-Arm oben)

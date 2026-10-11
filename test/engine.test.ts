@@ -408,7 +408,7 @@ test("Feinschliff: Satzzeichen nie näher als der Buchstabenabstand, in Schräge
     const v = layoutLine(t, opts()).variants[0], a = v.glyphs[i - 1], b = v.glyphs[i];
     return b.x + b.inst.prof.minX - (a.x + a.inst.prof.maxX);
   };
-  for (const [t, i] of [["A-", 1], ["-Z", 1], ["-2", 1], ["V-", 1], ["Y-", 1], ["K-", 1], ["T.", 1]] as const) expect([t, right(t, i) < 0]).toEqual([t, true]);
+  for (const [t, i] of [["A-", 1], ["-Z", 1], ["-2", 1], ["V-", 1], ["Y-", 1], ["X-", 1], ["T.", 1]] as const) expect([t, right(t, i) < 0]).toEqual([t, true]);
   // neben waagrechten Armen bleibt der Strich aus deren Tinte heraus: „E-g“, „L-T“, „T-Shirt“, „F-a“, „E-G“, „t-“
   // (Nachbartinte bis PUNCT_REACH Versalhöhe über und unter dem Strich: beim tiefen Strich in „F-a“ zählt der Mittelarm, nicht der ferne obere)
   const armGap = (t: string, i: number) => {
@@ -417,7 +417,7 @@ test("Feinschliff: Satzzeichen nie näher als der Buchstabenabstand, in Schräge
     const xs = (g: typeof a) => g.inst.ink.filter((q) => g === dash || (q.y >= lo && q.y <= hi)).map((q) => q.x + g.x);
     return Math.min(...xs(b)) - Math.max(...xs(a));
   };
-  for (const [t, i] of [["E-", 1], ["E-g", 1], ["F-a", 1], ["L-", 1], ["-T", 1], ["T-", 1], ["t-", 1]] as const) expect([t, armGap(t, i) >= S.gap - 1]).toEqual([t, true]);
+  for (const [t, i] of [["E-", 1], ["E-g", 1], ["F-a", 1], ["L-", 1], ["-T", 1], ["T-", 1], ["t-", 1], ["K-X", 1], ["k-", 1]] as const) expect([t, armGap(t, i) >= S.gap - 1]).toEqual([t, true]);
 });
 
 test("Feinschliff: Höhe von - – ( ) je Umgebung", () => {

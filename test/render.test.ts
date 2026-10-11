@@ -88,7 +88,7 @@ test("Zeilenband reicht auch für sehr lange Zeilen", () => {
 /** Layout von Hand: eine Glyphe bei x = 0. */
 function one(def: GlyphDef): Layout {
   const inst = instance(def, {}, S);
-  return { glyphs: [{ index: 0, char: def.char, inst, x: 0 }], extras: [], joins: {}, minX: inst.prof.minX, maxX: inst.prof.maxX, width: inst.prof.maxX - inst.prof.minX, score: 0 };
+  return { glyphs: [{ index: 0, char: def.char, inst, x: 0 }], extras: [], joins: {}, minX: inst.prof.minX, maxX: inst.prof.maxX, width: inst.prof.maxX - inst.prof.minX, score: 0, height: S.capHeight, lines: 1 };
 }
 
 test("eigene Oberkante (top): Tinte darüber wird dort abgeschnitten, auch bei Unterlänge zwischen −desc und top", () => {
