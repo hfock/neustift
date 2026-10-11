@@ -52,7 +52,8 @@ test("unerfüllbarer Pin → Hinweis, Satz trotzdem da", () => {
 });
 
 test("ohne Pins: Hinweis auf fehlenden kollisionsfreien Platz, nicht auf einen Pin", () => {
-  expect(layoutLine("y.y", opts()).warnings).toEqual(["Kein kollisionsfreier Platz für „.y“"]);
+  // der Strich steht über dem L-Fuß, der g-Schwanz träfe den Fuß (früher „y.y“: heute läuft kein Schwanz mehr unter ein Satzzeichen)
+  expect(layoutLine("L'g", opts()).warnings).toEqual(["Kein kollisionsfreier Platz für „'g“"]);
 });
 
 test("Pins außerhalb des Spielraums: Hinweis statt Absturz oder stiller Übernahme", () => {
@@ -389,4 +390,50 @@ test("Block (Hagen 2): gepinnte Verbindung bleibt in einer gesperrten Zeile", ()
   expect(v.joins[12]).toMatchObject({ type: "share", sub: "term" });
   expect([v.joins[10].type, v.joins[11].type]).toEqual(["none", "none"]); // die automatischen sind gelöst
   expect(Math.abs(ext(r[2]) - ext(r[0]))).toBeLessThanOrEqual(1);
+});
+
+test("Feinschliff: Satzzeichen nie näher als der Buchstabenabstand, nie im Bauch oder unter dem Arm des Nachbarn", () => {
+  const S = FLAECHE_1902;
+  for (const t of ["E-g", "E-G", "F-a", "L-T", "H-H", "T-Shirt", "Ost-West", "e-mail", "A-Z", "10-20", "(neu)", "(NEU)", "(Hagen)", "FF.", "F.", "L'"]) {
+    const v = layoutLine(t, opts()).variants[0];
+    for (let i = 1; i < v.glyphs.length; i++) {
+      const a = v.glyphs[i - 1], b = v.glyphs[i];
+      if (!/[\p{P}\p{S}]/u.test(a.char + b.char)) continue;
+      expect([t, a.char + b.char, v.joins[a.index]?.type ?? "none"]).toEqual([t, a.char + b.char, "none"]); // keine Verbindung
+      expect([t, a.char + b.char, lightGap(a.inst, a.x, b.inst, b.x, S.gap) >= S.gap - 1]).toEqual([t, a.char + b.char, true]);
+    }
+  }
+  // flacher Strich: rechts neben der ganzen Tinte des Nachbarn (E-Arme, T-Arm), nicht nur neben dem Mittelarm
+  const right = (t: string, i: number) => {
+    const v = layoutLine(t, opts()).variants[0], a = v.glyphs[i - 1], b = v.glyphs[i];
+    return b.x + b.inst.prof.minX - (a.x + a.inst.prof.maxX);
+  };
+  expect(right("E-", 1)).toBeGreaterThanOrEqual(S.gap - 1);
+  expect(right("T-", 1)).toBeGreaterThanOrEqual(S.gap - 1);
+  expect(right("-T", 1)).toBeGreaterThanOrEqual(S.gap - 1);
+  expect(right("T.", 1)).toBeLessThan(0); // der Punkt bleibt unter dem T-Arm (weit unter dem Strich)
+});
+
+test("Feinschliff: Höhe von - – ( ) je Umgebung", () => {
+  const mid = (t: string, i: number) => {
+    const g = layoutLine(t, opts()).variants[0].glyphs.find((q) => q.index === i)!;
+    const ys = g.inst.ink.map((q) => q.y);
+    return Math.round((Math.min(...ys) + Math.max(...ys)) / 2);
+  };
+  const S = FLAECHE_1902, x = S.xHeight / 2, cap = S.capHeight / 2;
+  expect(mid("e-mail", 1)).toBe(x);
+  expect(mid("T-Shirt", 1)).toBe(cap);
+  expect(mid("Ost-West", 3)).toBe(cap);
+  expect(mid("A-Z", 1)).toBe(cap);
+  expect(mid("10-20", 2)).toBe(cap);
+  expect(mid("10–20", 2)).toBe(cap);
+  expect(mid("und – so", 4)).toBe(x);
+  expect([mid("(neu)", 0), mid("(neu)", 4)]).toEqual([x, x]);
+  expect([mid("(NEU)", 0), mid("(NEU)", 4)]).toEqual([cap, cap]);
+  expect([mid("(Hagen)", 0), mid("(Hagen)", 6)]).toEqual([cap, cap]); // „)“ folgt seiner „(“
+  expect(mid("neu)", 3)).toBe(x); // ohne „(“: das Zeichen davor
+});
+
+test("Feinschliff: Wortabstand 150 im Font, die App nie enger", () => {
+  expect(FLAECHE_1902.wordGap - FLAECHE_1902.gap).toBe(150);
 });

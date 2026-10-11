@@ -12,21 +12,21 @@ test("jedes Zeichen hat eine Grundglyphe mit genau seinem Codepunkt, HAF liegt a
   expect(byName.get("Adieresis")!.unicodes).toEqual([0xc4]);
   expect(byName.get("uni1E9E")!.unicodes).toEqual([0x1e9e]);
   expect(byName.get("H_A_F")!.unicodes).toEqual([0xe000]);
-  expect(byName.get("space")!.advance).toBe(80); // 136 zwischen den Wortkästen (Seitenabstände + 80) – so eng setzt auch die App mindestens; nach der Tinte darf sie weiter setzen
+  expect(byName.get("space")!.advance).toBe(150); // 206 zwischen den Wortkästen (Seitenabstände + 150) – so eng setzt auch die App mindestens; nach der Tinte darf sie weiter setzen
   expect(data.glyphs.map((g) => g.name).filter((n) => !/^[A-Za-z0-9._]+$/.test(n))).toEqual([]); // gültige Glyphennamen (Adobe Glyph List)
 }, 20000);
 
 test("Feature-Datei nennt nur vorhandene Glyphen und enthält liga, dlig und calt", () => {
   const names = new Set(byName.keys()), body = data.fea.replace(/^languagesystem.*$/gm, "").replace(/@\w+/g, ""); // Klassennamen zählen nicht
-  const used = body.match(/[A-Za-z_][A-Za-z0-9_.]*(?=['\s;\]])/g)!.filter((w) => !["sub", "by", "ignore", "lookup", "feature", "calt", "liga", "dlig"].includes(w));
-  const unknown = used.filter((w) => !names.has(w) && !/^[A-Z_]+_LIG$|^(NEST|UNDERRUN|TERM|CROSS|TAIL|TRIM)_/.test(w));
+  const used = body.match(/[A-Za-z_][A-Za-z0-9_.]*(?=['\s;\]])/g)!.filter((w) => !["sub", "by", "ignore", "lookup", "feature", "calt", "liga", "dlig", "case"].includes(w));
+  const unknown = used.filter((w) => !names.has(w) && !/^[A-Z_]+_LIG$|^(NEST|UNDERRUN|TERM|CROSS|TAIL|TRIM|LOWER)_|^CASE$/.test(w));
   expect([...new Set(unknown)]).toEqual([]);
   for (const f of ["feature liga", "feature dlig", "feature calt"]) expect(data.fea).toContain(f);
   expect(data.fea).toContain("lookup CROSS_LEFT");
   expect(data.fea).toContain("lookup TAIL_RIGHT");
   expect(data.fea).toContain("lookup TRIM_LEFT");
   const calt = /feature calt \{([^}]*)\}/.exec(data.fea)![1].match(/lookup \w+/g);
-  expect(calt).toEqual(["NEST_LEFT", "NEST_RIGHT", "UNDERRUN_LEFT", "UNDERRUN_RIGHT", "TERM_LEFT", "CROSS_LEFT", "TAIL_RIGHT", "TRIM_LEFT"].map((l) => `lookup ${l}`));
+  expect(calt).toEqual(["LOWER_DASH", "LOWER_PAREN_OPEN", "LOWER_PAREN_CLOSE", "NEST_LEFT", "NEST_RIGHT", "UNDERRUN_LEFT", "UNDERRUN_RIGHT", "TERM_LEFT", "CROSS_LEFT", "TAIL_RIGHT", "TRIM_LEFT"].map((l) => `lookup ${l}`));
 });
 
 test("Kleinbuchstaben verschränkt: Querstrich teilen, Unterlänge nach links, f-Haken kürzen", () => {
@@ -77,8 +77,8 @@ test("Kleinbuchstaben haben eigene Glyphen; Namenszug und Monogramm nur in Versa
 });
 
 test("Abgleich verliert nur Folgen, die der Font nicht nachbilden kann", () => {
-  // FF…: ein verschachteltes F verschachtelt nicht noch einmal; F0?, FJ?: das ? kürzt den F-Arm nur um 0,12 (unter der Rundungsgrenze 0,5), der Font setzt F.nest
-  expect(data.dropped.filter((t) => !t.startsWith("FF"))).toEqual(["F0?", "FJ?"]);
+  // FF…: ein verschachteltes F verschachtelt nicht noch einmal; FJ?: das ? kürzt den F-Arm nur um 0,12 (unter der Rundungsgrenze 0,5), der Font setzt F.nest
+  expect(data.dropped.filter((t) => !t.startsWith("FF"))).toEqual(["FJ?"]);
 });
 
 test("Sollwerte für Ketten mit Varianten: GLAS, TEAM, OFFEN, AUFTAKT", () => {
@@ -108,4 +108,23 @@ test("Strich mit eigener Oberkante: eigener Teil mit eigenem Band (k-Arm bis zur
   const k = byName.get("k")!;
   expect(k.parts.map((q) => q.top)).toEqual([700, 300]);
   expect(k.parts[1].strokes.length).toBe(1);
+});
+
+test("Feinschliff: Satzzeichen auf x-Höhen-Mitte neben Kleinbuchstaben, case nimmt es zurück", () => {
+  const words = (t: string) => data.expect.find((e) => e.text === t)!.words.map((w) => w.map((g) => g.name).join(" "));
+  expect(words("e-mail")).toEqual(["e hyphen.lc m a i l"]);
+  expect(words("T-Shirt")).toEqual(["T hyphen S h i r t"]); // Versal gewinnt
+  expect(words("Ost-West")).toEqual(["O s t hyphen W e s t"]);
+  expect(words("A-Z")).toEqual(["A hyphen Z"]);
+  expect(words("10-20")).toEqual(["one zero hyphen two zero"]);
+  expect(words("und – so")).toEqual(["u n d", "endash.lc", "s o"]); // über ein Leerzeichen hinweg
+  expect(words("(neu)")).toEqual(["parenleft.lc n e u parenright.lc"]);
+  expect(words("(NEU)")).toEqual(["parenleft N E U parenright"]);
+  expect(words("(Hagen)")).toEqual([expect.stringMatching(/^parenleft H .* parenright$/)]); // „)“ folgt seiner „(“
+  expect(words("(neu und alt)")[2]).toBe("a l t parenright.lc");
+  expect(words("F-a")[0]).toMatch(/^F hyphen/); // kein Verschachteln unter den F-Arm
+  for (const n of ["hyphen.lc", "endash.lc", "parenleft.lc", "parenright.lc"]) expect(byName.get(n)!.unicodes).toEqual([]);
+  expect(data.fea).toMatch(/lookup CASE \{\n  sub hyphen\.lc by hyphen;/);
+  expect(data.fea).toContain("feature case {\n  lookup CASE;\n} case;");
+  expect(data.fea.indexOf("lookup CASE {")).toBeGreaterThan(data.fea.indexOf("lookup TRIM_LEFT {")); // nach calt in der Lookup-Liste
 });

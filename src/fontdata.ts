@@ -1,8 +1,8 @@
 // Font-Daten aus der Engine (Spec M2 §5): Glyphen samt calt-Varianten, Vorschübe, Unterschneidung, Feature-Datei und Sollwerte.
 import hagen from "../presets/hagen-aad-fock.json";
-import { layoutLine, type Layout, type Pins } from "./engine";
+import { PAREN_REACH, layoutLine, type Layout, type Pins } from "./engine";
 import { shift, type Stroke } from "./geom";
-import { GLYPHS, PLACEHOLDER, cutTop, defaults, type Params } from "./glyphs";
+import { GLYPHS, PLACEHOLDER, cutTop, defaults, descOf, type Params } from "./glyphs";
 import { instance, joinsFor, spacing, type Inst } from "./rules";
 import { FLAECHE_1902 as S } from "./style";
 
@@ -43,7 +43,7 @@ const advance = (i: Inst) => Math.round(i.prof.maxX - i.prof.minX + lsb(i) + rsb
 const kernFor = (l: Inst, r: Inst, dx: number) => Math.round(dx - ox(r) + ox(l) - advance(l));
 /** Teile einer Glyphe: alle Striche im Band der Glyphe, dazu je Strich mit eigener Oberkante (k-Arm) ein Teil mit eigenem Band. */
 const parts = (i: Inst, dx: number): FontPart[] => {
-  const bottom = -(i.def.desc ?? 0), top = i.def.desc && !i.def.top ? S.capHeight : cutTop(i.def, i.p, S);
+  const bottom = -descOf(i), top = descOf(i) && !i.def.top ? S.capHeight : cutTop(i.def, i.p, S);
   const own = i.strokes.filter((st) => st.top !== undefined);
   return [
     { strokes: i.strokes.filter((st) => st.top === undefined).map((st) => shift(st, dx)), bottom, top },
@@ -84,7 +84,7 @@ export function fontData(version: string): FontData {
     if (known) return known;
     const d = defaults(GLYPHS[c]), changed = (q: string) => q in d && Math.abs(p[q] - d[q]) > 1e-6;
     const n0 = name ?? [glyphName(c), changed("h") && "short", (changed("arm") || changed("top")) && "nest", changed("foot") && "foot", changed("legL") && "lift",
-      (changed("wb") || changed("term")) && "term", changed("cross") && "cross", changed("tail") && "tail", changed("hook") && "trim"]
+      (changed("wb") || changed("term")) && "term", changed("cross") && "cross", changed("tail") && "tail", changed("hook") && "trim", changed("lc") && "lc"]
       .filter(Boolean).join(".");
     // gleiche Rolle, andere Werte (E-Fuß vor A kürzer als vor Ä): durchnummerieren
     const taken = (x: string) => [...reg.values()].some((g) => g.name === x);
@@ -96,6 +96,7 @@ export function fontData(version: string): FontData {
   }
   const base = (c: string) => glyph(c, defaults(GLYPHS[c]));
   chars.forEach(base);
+  const lower = chars.filter((c) => "lc" in GLYPHS[c].params).map((c) => glyph(c, { ...defaults(GLYPHS[c]), lc: 1 })); // - – ( ) auf x-Höhen-Mitte
 
   // Paare: was die Engine bei Verschränkung 0,5 aus zwei Zeichen macht
   type Join = { l: Glyph; r: Glyph; dx: number };
@@ -217,7 +218,7 @@ export function fontData(version: string): FontData {
     { name: "uni00A0", unicodes: [0xa0], advance: S.wordGap - S.gap, parts: [] },
     nameLigature(),
   ];
-  const fea = features(reg, fNest, rules);
+  const fea = features(reg, fNest, rules, lower);
   return {
     format: FORMAT,
     info: { family: "Neustift", style: "Regular", version, unitsPerEm: 1000, capHeight: S.capHeight, xHeight: S.xHeight, ascender: 760, descender: -240, stroke: S.stroke },
@@ -245,7 +246,7 @@ type Pair = { l: Glyph; r: Glyph };
 type Rules = { nestX: Map<string, Glyph>; trimX: Map<string, Glyph>; under: Pair[]; term: Pair[]; cross: Pair[]; tail: Pair[]; hook: Pair[]; skip: string[][]; trim: [string, string, Glyph][]; block: Map<string, [string, string[]][]>; untail: Map<string, string[]> };
 
 /** Feature-Datei: liga (Name), dlig (HAF), calt (verschachteln, unterfahren, Bogenende, Querstrich, Unterlänge, f-Haken) in dieser Reihenfolge. */
-function features(reg: Map<string, Glyph>, fNest: Glyph, r: Rules): string {
+function features(reg: Map<string, Glyph>, fNest: Glyph, r: Rules, lower: Glyph[]): string {
   const word = [...reg.values()].filter((g) => /^[A-Za-zÄÖÜäöüẞß0-9]$/.test(g.char)).map((g) => g.name);
   const seq = (t: string) => [...t].map((c) => (c === " " ? "space" : glyphName(c)));
   const marked = (t: string) => seq(t).map((n) => n + "'").join(" ");
@@ -256,7 +257,26 @@ function features(reg: Map<string, Glyph>, fNest: Glyph, r: Rules): string {
     const m = marked(text).split(" ");
     out.push(`feature ${feat} {\n  ignore sub @WORD ${m.join(" ")};\n  ignore sub ${m.join(" ")} @WORD;\n  sub ${m[0]} lookup ${lig} ${m.slice(1).join(" ")};\n} ${feat};`);
   }
-  // calt-Lookups
+  // calt-Lookups. Zuerst die Kleinbuchstaben-Formen der Satzzeichen (wie lowerForms in der Engine): Versal und Ziffer gewinnen
+  const all = [...reg.values()], cls = (re: RegExp) => all.filter((g) => re.test(g.char)).map((g) => g.name);
+  out.push(`@LC = [${cls(/\p{Ll}/u).join(" ")}];`, `@UC = [${[...cls(/[\p{Lu}\p{N}\uE000]/u), NAME_LIG].join(" ")}];`);
+  const parens = lower.filter((g) => "()".includes(g.char)).flatMap((g) => [glyphName(g.char), g.name]);
+  out.push(`@NOPAREN = [${[...all.map((g) => g.name).filter((n) => !parens.includes(n)), "space", "uni00A0", NAME_LIG].join(" ")}];`);
+  const dash = lower.filter((g) => "-–".includes(g.char)).flatMap((g) => {
+    const n = glyphName(g.char);
+    return [
+      ...[`@UC ${n}'`, `@UC space ${n}'`, `${n}' @UC`, `${n}' space @UC`].map((c) => `  ignore sub ${c};`),
+      ...[`@LC ${n}'`, `@LC space ${n}'`, `${n}' @LC`, `${n}' space @LC`].map((c) => `  sub ${c} by ${g.name};`),
+    ];
+  });
+  out.push(`lookup LOWER_DASH {\n${dash.join("\n")}\n} LOWER_DASH;`);
+  out.push(`lookup LOWER_PAREN_OPEN {\n  sub parenleft' @LC by parenleft.lc;\n} LOWER_PAREN_OPEN;`);
+  const reach = Array.from({ length: PAREN_REACH + 1 }, (_, k) => Array(k).fill("@NOPAREN").join(" "));
+  out.push(`lookup LOWER_PAREN_CLOSE {\n${[
+    ...reach.map((m) => `  ignore sub parenleft ${m}${m && " "}parenright';`), // „)“ folgt seiner „(“
+    ...reach.map((m) => `  sub parenleft.lc ${m}${m && " "}parenright' by parenright.lc;`),
+    "  sub @LC parenright' by parenright.lc;", // keine „(“ in Reichweite: das Zeichen davor entscheidet
+  ].join("\n")}\n} LOWER_PAREN_CLOSE;`);
   const nestX = [...r.nestX.keys()].map(glyphName);
   const fnests = [...new Set([fNest, ...r.trimX.values(), ...r.trim.map(([, , f]) => f)])].map((g) => g.name);
   out.push(`@FNEST = [${fnests.join(" ")}];`);
@@ -295,8 +315,11 @@ function features(reg: Map<string, Glyph>, fNest: Glyph, r: Rules): string {
   const untail = [...r.untail].map(([lr, zs]) => `  ignore sub [${zs.flatMap((z) => variants(z).map((g) => g.name)).join(" ")}] ${lr}';`);
   out.push(`lookup TAIL_RIGHT {\n${[...untail, ...uniq(r.tail.map((j) => `  sub ${j.l.name} ${glyphName(j.r.char)}' by ${j.r.name};`))].join("\n")}\n} TAIL_RIGHT;`);
   left("TRIM_LEFT", r.hook);
-  const calt = ["NEST_LEFT", "NEST_RIGHT", "UNDERRUN_LEFT", "UNDERRUN_RIGHT", "TERM_LEFT", "CROSS_LEFT", "TAIL_RIGHT", "TRIM_LEFT"];
+  const calt = ["LOWER_DASH", "LOWER_PAREN_OPEN", "LOWER_PAREN_CLOSE", "NEST_LEFT", "NEST_RIGHT", "UNDERRUN_LEFT", "UNDERRUN_RIGHT", "TERM_LEFT", "CROSS_LEFT", "TAIL_RIGHT", "TRIM_LEFT"];
   out.push(`feature calt {\n${calt.map((l) => `  lookup ${l};`).join("\n")}\n} calt;`);
+  // case: Versalform überall (nach calt in der Lookup-Liste, nimmt die Kleinbuchstaben-Formen zurück)
+  out.push(`lookup CASE {\n${lower.map((g) => `  sub ${g.name} by ${glyphName(g.char)};`).join("\n")}\n} CASE;`);
+  out.push(`feature case {\n  lookup CASE;\n} case;`);
   return out.join("\n") + "\n";
 }
 
@@ -307,6 +330,10 @@ const TESTS: [string, Record<string, boolean>][] = [
   ["Wetter", {}], ["Acht", {}], ["Echo", {}], ["Schrift", {}], ["bett", {}], ["schiff", {}], ["Mannschaft", {}],
   ["„Gymnasium“", {}], ["„Typ“", {}], // Unterlänge hinter einer Unterlänge: kein Schwanz unter das T
   ["Pci", {}], ["\uE000cu", {}], // hinter P und dem Monogramm: c.term vor i und u
+  // Feinschliff: Satzzeichen mit Mindestabstand und Höhe je Umgebung
+  ["E-g", {}], ["E-G", {}], ["F-a", {}], ["L-T", {}], ["H-H", {}], ["T-Shirt", {}], ["Ost-West", {}], ["e-mail", {}], ["E-mail", {}], ["x-Achse", {}],
+  ["A-Z", {}], ["10-20", {}], ["10–20 Uhr", {}], ["Wien – Berlin", {}], ["und – so", {}], ["(neu)", {}], ["(NEU)", {}], ["(Hagen)", {}], ["(neu und alt)", {}],
+  ["FF.", {}], ["T.", {}], ["r.", {}], ["fT-", {}],
 ];
 
 /** Sollwerte: Glyphenfolge und Ursprünge je Wort wie die Engine; bei einem Wort zusätzlich die Striche für den Flächenvergleich.

@@ -1,6 +1,6 @@
 import { pathData } from "./geom";
 import type { Layout, Placed } from "./engine";
-import { cutTop } from "./glyphs";
+import { cutTop, descOf } from "./glyphs";
 import type { Style } from "./style";
 
 export type Overlay = { href: string; x: number; y: number; w: number; h: number; opacity: number };
@@ -19,7 +19,7 @@ const r1 = (n: number) => Math.round(n * 10) / 10;
 
 /** Layout → SVG-Text. Schriftkoordinaten (y nach oben) liegen gespiegelt in Gruppen; die Tinte in #ink. Zeilen eines Blocks: y je Glyphe (0 = erste, darunter negativ). */
 export function svgString(l: Layout, s: Style, o: RenderOpts): string {
-  const m = o.margin ?? 60, H = s.capHeight, desc = Math.max(0, ...l.glyphs.map((g) => (g.inst.def.desc ?? 0) - (g.y ?? 0))); // Unterlängen und tiefere Zeilen im Rahmen
+  const m = o.margin ?? 60, H = s.capHeight, desc = Math.max(0, ...l.glyphs.map((g) => descOf(g.inst) - (g.y ?? 0))); // Unterlängen und tiefere Zeilen im Rahmen
   const at = (g: Placed) => `translate(${r1(g.x)} ${r1(g.y ?? 0)})`;
   const [x, y, w, h] = [l.minX - m, -m, l.width + 2 * m, H + 2 * m + desc].map(r1);
   const out = [`<svg xmlns="http://www.w3.org/2000/svg" viewBox="${x} ${y} ${w} ${h}" width="${w}" height="${h}">`];
@@ -61,7 +61,7 @@ export function svgString(l: Layout, s: Style, o: RenderOpts): string {
   const glyph = (g: Layout["glyphs"][number]) => {
     // an der eigenen Oberkante abschneiden (schräge Enden V X Y v w x y, Gehrungsspitzen M N), Zeichen mit Unterlänge
     // zwischen −desc und Oberkante; Striche mit eigener Oberkante (k-Arm) zusätzlich dort
-    const top = r1(cutTop(g.inst.def, g.inst.p, s)), d = g.inst.def.desc ?? 0; // Satzzeichen ohne Höhenregler: volle Höhe
+    const top = r1(cutTop(g.inst.def, g.inst.p, s)), d = descOf(g.inst); // Satzzeichen ohne Höhenregler: volle Höhe
     const clip = (d || top < H) && g.inst.ink.some((q) => q.y > top + 0.5) ? clipId(d, top) : null;
     const paths = g.inst.strokes.map((st) => {
       const path = `<path d="${pathData(st)}"/>`;
@@ -74,11 +74,11 @@ export function svgString(l: Layout, s: Style, o: RenderOpts): string {
   for (const y of new Set(l.glyphs.map((g) => r1(g.y ?? 0)))) {
     const band = y ? `kairos-zeile-${Math.round(-y * 10)}` : "kairos-zeile";
     out.push(`<clipPath id="${band}"><rect x="-10000000" y="${y}" width="20000000" height="${H}"/></clipPath><g clip-path="url(#${band})">`);
-    for (const g of l.glyphs) if (!g.inst.def.desc && r1(g.y ?? 0) === y) glyph(g); // Zeichen mit Unterlänge liegen außerhalb des Bands (unten)
+    for (const g of l.glyphs) if (!descOf(g.inst) && r1(g.y ?? 0) === y) glyph(g); // Zeichen mit Unterlänge liegen außerhalb des Bands (unten)
     for (const e of l.extras) if (r1(e.line ?? 0) === y) out.push(`<path d="${pathData(e)}"/>`);
     out.push(`</g>`);
   }
-  for (const g of l.glyphs) if (g.inst.def.desc) glyph(g); // Komma, tiefe Anführungszeichen ohne Beschnitt; y bis zur x-Höhe
+  for (const g of l.glyphs) if (descOf(g.inst)) glyph(g); // Komma, tiefe Anführungszeichen ohne Beschnitt; y bis zur x-Höhe
   out.push(`</g></svg>`);
   return out.join("");
 }

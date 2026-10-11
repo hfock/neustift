@@ -20,12 +20,22 @@ export function dock<K extends Dock["kind"]>(i: Inst, kind: K, side?: "left" | "
 }
 
 /** Abstand für „keine Verbindung“: kleinste waagrechte Lichtweite = Buchstabenabstand (+ Seitenkorrektur).
+ *  Satzzeichen (Feinschliff): sie rücken nie unter oder über die Tinte des Nachbarn – alles, was er in einer halben Versalhöhe um das
+ *  Zeichen zeichnet, zählt als Kante, davor bleibt der volle Buchstabenabstand. So steht „-“ nicht im E-Bauch oder unter dem T-Arm
+ *  („E-g“, „T-Shirt“), der Punkt aber weiter unter dem T-Arm („T.“), das Häkchen über dem L-Fuß („L'“).
  *  Ein loser oberer Strich (f-Haken) zählt nur so kurz, wie trimTop ihn kürzen darf – gepinnte Regler (lock) bleiben; die Engine kürzt ihn danach
  *  vor dem Nachbarn. Reicht das Kürzen nicht (Bogen des S unter dem Hakenband), zählt der ganze Haken.
  *  Was das Profil nicht sieht (Unterlängen unter 0, Punkte neben Querstrichen), schiebt den Nachbarn nach rechts, bis armGap Luft bleibt. */
 export function spacing(l: Inst, r: Inst, s: Style, minY = 0, lock?: Params): number {
   const gap = s.gap + (l.def.adjust?.right ?? 0) + (r.def.adjust?.left ?? 0);
   let dx = gapOffset(l.prof, r.prof, gap, minY);
+  if (isPunct(l.def) || isPunct(r.def)) {
+    const bl = inkBand(l, s), br = inkBand(r, s);
+    if (isFinite(bl[0]) || isFinite(br[0])) dx = Math.max(dx, s.gap - (inkMin(r, bl) - inkMax(l, br)));
+    // und schräg gemessen (Profil-Streifen sehen Diagonalen nur waagrecht): nirgends näher als der Buchstabenabstand
+    for (let i = 0, g; i < 20 && (g = lightGap(l, 0, r, dx, s.gap)) < s.gap - 1; i++) dx += s.gap - g;
+    return dx;
+  }
   if (l.def.loose) {
     const d = gapOffset(instance(l.def, { ...l.def.trimTop!(l.p, -Infinity), ...lock }, s).prof, r.prof, gap, minY), t = trimTop(l, 0, r, d, s, lock);
     if (!collides(t, 0, r, d, s)) return d;
@@ -34,9 +44,26 @@ export function spacing(l: Inst, r: Inst, s: Style, minY = 0, lock?: Params): nu
   return dx;
 }
 
-/** Alle an dieser Grenze möglichen Verbindungen (Balken-Variante kommt in der Engine dazu). */
+/** Satz- und Sonderzeichen (alles außer Buchstaben und Ziffern; das Monogramm U+E000 zählt als Buchstabe). */
+export const isPunct = (def: GlyphDef) => /[\p{P}\p{S}]/u.test(def.char);
+
+/** So weit (Anteil der Versalhöhe) über und unter einem flachen Satzzeichen zählt die Tinte des Nachbarn als seine Kante. */
+export const PUNCT_REACH = 0.5;
+/** Höhenband eines flachen Satzzeichens (Tinte niedriger als PUNCT_REACH × Versalhöhe: - – . , : ' " « » + = …), um PUNCT_REACH erweitert;
+ *  sonst unbegrenzt. Hohe Zeichen (Klammern, /, !) haben keinen Bauch, in den ein Nachbar ragt: für sie reicht das Profil. */
+const inkBand = (i: Inst, s: Style): [number, number] => {
+  let lo = Infinity, hi = -Infinity;
+  for (const q of i.ink) (lo = Math.min(lo, q.y)), (hi = Math.max(hi, q.y));
+  const k = PUNCT_REACH * s.capHeight;
+  return isPunct(i.def) && hi - lo < k ? [lo - k, hi + k] : [-Infinity, Infinity];
+};
+const inkMax = (i: Inst, [lo, hi]: [number, number]) => i.ink.reduce((m, q) => (q.y >= lo && q.y <= hi && q.x > m ? q.x : m), -Infinity);
+const inkMin = (i: Inst, [lo, hi]: [number, number]) => i.ink.reduce((m, q) => (q.y >= lo && q.y <= hi && q.x < m ? q.x : m), Infinity);
+
+/** Alle an dieser Grenze möglichen Verbindungen (Balken-Variante kommt in der Engine dazu). Satzzeichen verbinden nie: kein Verschachteln unter den F-Arm, kein Schwanz darunter. */
 export function joinsFor(l: Inst, r: Inst): Join[] {
   const out: Join[] = [{ type: "none" }];
+  if (isPunct(l.def) || isPunct(r.def)) return out;
   if (dock(l, "zone") && l.def.cover) out.push({ type: "nest" });
   if (dock(l, "foot") && l.def.reach && dock(r, "leg", "left") && r.def.lift) out.push({ type: "underrun" });
   const stemL = dock(r, "stem", "left"), term = dock(l, "terminal");

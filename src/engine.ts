@@ -1,5 +1,5 @@
 import { gapOffset, mergeProfiles, shift, type Profile, type Pt, type Stroke } from "./geom";
-import { GLYPHS, PLACEHOLDER, cutTop, defaults, inRange, type GlyphDef, type Params } from "./glyphs";
+import { GLYPHS, PLACEHOLDER, cutTop, defaults, descOf, inRange, type GlyphDef, type Params } from "./glyphs";
 import { apply, barLink, collides, instance, joinsFor, trimTop, type Inst, type Join } from "./rules";
 import type { Style } from "./style";
 
@@ -16,7 +16,7 @@ export const WEIGHTS = { nest: 0.2, underrun: 0.2, term: 0.2, cross: 0.2, tail: 
 const BEAM = 32;
 const CODE: Record<string, string> = { none: "-", nest: "N", underrun: "U", term: "T", stem: "S", leg: "L", cross: "Q", tail: "G" };
 
-type Letter = { index: number; char: string; def: GlyphDef };
+type Letter = { index: number; char: string; def: GlyphDef; base: Params }; // base: Startregler samt Form aus der Umgebung (lowerForms)
 type Node = { placed: Placed[]; joins: Record<number, Join>; extras: Stroke[]; cost: number; key: string };
 
 const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
@@ -27,9 +27,42 @@ function joinCost(j: Join, interlock: number): number {
   return (base === null ? 0 : base - g) + (j.bar ? WEIGHTS.bar - g : 0);
 }
 
+/** Wie weit „)“ höchstens nach seiner „(“ sucht (Zeichen samt Leerzeichen) – der Font kann nur Kontexte fester Länge. */
+export const PAREN_REACH = 24;
+const LOWER = /\p{Ll}/u, UPPER = /[\p{Lu}\p{N}\uE000]/u; // Monogramm HAF zählt als Versal
+
+/**
+ * Kleinbuchstaben-Form der Satzzeichen (Feinschliff): Indizes, an denen - – ( ) auf die x-Höhen-Mitte rücken.
+ * - und –: der nächste Buchstabe auf jeder Seite (über höchstens ein Leerzeichen hinweg) entscheidet; sobald einer Versal oder Ziffer
+ *   ist, bleibt die Versalform („T-Shirt“, „Ost-West“, „A-Z“, „10-20“), sonst reicht ein Kleinbuchstabe („e-mail“, „und – so“).
+ *   Versal gewinnt, weil ein tiefer Strich neben einem Versal wie ein Unterstrich wirkt, ein Strich auf Versalhöhen-Mitte neben einer
+ *   Oberlänge (t, l) aber noch trägt.
+ * - „(“ richtet sich nach dem Zeichen dahinter, „)“ nach seiner „(“ (bis PAREN_REACH Zeichen zurück), damit beide gleich stehen
+ *   („(Hagen)“: beide Versalform); ohne „(“ in Reichweite nach dem Zeichen davor.
+ * Der Font bildet genau das per calt nach (fontdata.ts, Lookup LOWER_FORMS).
+ */
+export function lowerForms(text: string): Set<number> {
+  const cs = [...text], out = new Set<number>();
+  const kind = (c?: string) => (c === undefined ? null : UPPER.test(c) ? "U" : LOWER.test(c) ? "L" : null);
+  const near = (i: number, d: number) => kind(cs[i + d] === " " ? cs[i + 2 * d] : cs[i + d]);
+  cs.forEach((c, i) => {
+    if (c === "-" || c === "–") {
+      const a = near(i, -1), b = near(i, 1);
+      if (a !== "U" && b !== "U" && (a === "L" || b === "L")) out.add(i);
+    } else if (c === "(") {
+      if (kind(cs[i + 1]) === "L") out.add(i);
+    } else if (c === ")") {
+      let k = i - 1;
+      while (k >= 0 && i - k <= PAREN_REACH + 1 && cs[k] !== "(" && cs[k] !== ")") k--;
+      if (k >= 0 && i - k <= PAREN_REACH + 1 && cs[k] === "(" ? out.has(k) : kind(cs[i - 1]) === "L") out.add(i);
+    }
+  });
+  return out;
+}
+
 /** Text in Wörter aus Buchstaben zerlegen; Zeichen wie getippt, unbekannte → Platzhalter. */
 function words(text: string, warn: Set<string>): Letter[][] {
-  const out: Letter[][] = [];
+  const out: Letter[][] = [], low = lowerForms(text);
   let cur: Letter[] = [];
   [...text].forEach((char, index) => {
     if (char.trim() === "") {
@@ -39,7 +72,8 @@ function words(text: string, warn: Set<string>): Letter[][] {
     }
     const def = GLYPHS[char];
     if (!def) warn.add(`Zeichen „${char}“ noch nicht entworfen`);
-    cur.push({ index, char, def: def ?? PLACEHOLDER });
+    const d = def ?? PLACEHOLDER;
+    cur.push({ index, char, def: d, base: { ...defaults(d), ...("lc" in d.params && { lc: low.has(index) ? 1 : 0 }) } });
   });
   if (cur.length) out.push(cur);
   return out;
@@ -55,7 +89,7 @@ function expand(n: Node, cur: Letter, o: Options, usePins: boolean, force = fals
   const pinL = usePins ? o.pins.letters[last.index] : undefined;
   const lockL = pinL && !conflicts(last.inst.p, pinL) ? pinL : undefined; // schon an der linken Grenze verworfen (Hinweis steht dort)
   const lockR = usePins ? o.pins.letters[cur.index] : undefined;
-  const rp0 = { ...defaults(cur.def), ...lockR };
+  const rp0 = { ...cur.base, ...lockR };
   if (!inRange(cur.def, rp0)) return []; // Pin außerhalb des Spielraums (Vorlage/Speicher): wie unerfüllbar behandeln – sonst riesige Striche
   const options = force ? [{ type: "none" } as Join] : joinsFor(last.inst, instance(cur.def, rp0, s));
   for (const j of options) {
@@ -103,10 +137,10 @@ function prune(nodes: Node[]): Node[] {
 /** Strahlsuche über die Buchstabengrenzen eines Worts. */
 function searchWord(word: Letter[], o: Options, warn: Set<string>): Node[] {
   const s = o.style, first = word[0];
-  let p0 = { ...defaults(first.def), ...o.pins.letters[first.index] };
+  let p0 = { ...first.base, ...o.pins.letters[first.index] };
   if (!inRange(first.def, p0)) {
     warn.add(`Pin bei „${first.char}“ nicht erfüllbar`); // Wert außerhalb des Spielraums, z. B. aus einer bearbeiteten Vorlage
-    p0 = defaults(first.def);
+    p0 = first.base;
   }
   let beam: Node[] = [{ placed: [{ index: first.index, char: first.char, inst: instance(first.def, p0, s), x: 0 }], joins: {}, extras: [], cost: 0, key: "" }];
   for (let k = 1; k < word.length; k++) {
@@ -176,7 +210,7 @@ function assemble(parts: Node[], score: number, s: Style): Layout {
     Object.assign(joins, n.joins);
     prev = mergeProfiles(n.placed.map((g) => ({ prof: g.inst.prof, x: g.x + offset })));
   }
-  return { glyphs, extras, joins, ...extent(glyphs), score, height: s.capHeight + Math.max(0, ...glyphs.map((g) => g.inst.def.desc ?? 0)), lines: 1 };
+  return { glyphs, extras, joins, ...extent(glyphs), score, height: s.capHeight + Math.max(0, ...glyphs.map((g) => descOf(g.inst))), lines: 1 };
 }
 
 /** Regel e: Breiten im Spielraum anpassen, bis die Zeile die Zielbreite hat. Verbindungen und Pins bleiben so, wie die Variante sie hat. */
@@ -269,7 +303,7 @@ function lineDrop(up: Placed[], down: Placed[], s: Style): number {
   const col = (gs: Placed[], low: boolean) => {
     const m = new Map<number, Pt>();
     for (const g of gs) {
-      const top = Math.min(s.capHeight, cutTop(g.inst.def, g.inst.p, s)), bot = -(g.inst.def.desc ?? 0);
+      const top = Math.min(s.capHeight, cutTop(g.inst.def, g.inst.p, s)), bot = -descOf(g.inst);
       for (const q of g.inst.ink) {
         if (q.y < bot || q.y > top) continue;
         const x = g.x + q.x, c = Math.floor(x), e = m.get(c);
@@ -331,7 +365,7 @@ function stack(rows: Layout[], score: number, s: Style): Layout {
     Object.assign(joins, r.joins);
     prev = r;
   }
-  const height = s.capHeight - Math.min(...glyphs.map((g) => g.y! - (g.inst.def.desc ?? 0)));
+  const height = s.capHeight - Math.min(...glyphs.map((g) => g.y! - descOf(g.inst)));
   return { glyphs, extras, joins, ...extent(glyphs), score, height, lines: rows.length };
 }
 
