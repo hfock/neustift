@@ -1,5 +1,5 @@
 import { gapOffset, mergeProfiles, shift, type Profile, type Pt, type Stroke } from "./geom";
-import { GLYPHS, PLACEHOLDER, defaults, inRange, type GlyphDef, type Params } from "./glyphs";
+import { GLYPHS, PLACEHOLDER, cutTop, defaults, inRange, type GlyphDef, type Params } from "./glyphs";
 import { apply, barLink, collides, instance, joinsFor, trimTop, type Inst, type Join } from "./rules";
 import type { Style } from "./style";
 
@@ -252,17 +252,26 @@ export function joinOptions(v: Layout, i: number): Join[] {
 const MAX_LINES = 6;
 /** Sperrung, wenn fitWidth eine Zeile nicht auf Blockbreite bringt: je offene Lücke höchstens TRACK × Buchstabenabstand. */
 const TRACK = 1;
+/** Varianten mit anderem Umbruch: bis zu SPLITS Teilungen, deren Bewertung höchstens SPLIT_MARGIN über der besten liegt. */
+const SPLITS = 3, SPLIT_MARGIN = 0.5;
+/** Bis zu so vielen Wörtern werden alle Umbrüche probiert, darüber je Zeilenzahl die ausgewogenste Teilung. */
+const ENUM_WORDS = 16;
 
 /** Senkung der Grundlinie, bei der die kleinste Lichtweite zwischen Tinte oben und Tinte unten genau gap ist (untere Zeile rückt von unten hoch). */
-function lineDrop(up: Placed[], down: Placed[], gap: number): number {
-  // je Spalte (1 Einheit) der tiefste Punkt oben und der höchste unten; nur sie können den Abstand bestimmen
+function lineDrop(up: Placed[], down: Placed[], s: Style): number {
+  const gap = s.gap;
+  // je Spalte (1 Einheit) der tiefste Punkt oben und der höchste unten; nur sie können den Abstand bestimmen.
+  // Nur sichtbare Tinte wie im Renderer: zwischen Unterlänge und Oberkante (eigene Strich-Oberkanten wie der k-Arm nicht berücksichtigt)
   const col = (gs: Placed[], low: boolean) => {
     const m = new Map<number, Pt>();
-    for (const g of gs)
+    for (const g of gs) {
+      const top = Math.min(s.capHeight, cutTop(g.inst.def, g.inst.p, s)), bot = -(g.inst.def.desc ?? 0);
       for (const q of g.inst.ink) {
+        if (q.y < bot || q.y > top) continue;
         const x = g.x + q.x, c = Math.floor(x), e = m.get(c);
         if (!e || (low ? q.y < e.y : q.y > e.y)) m.set(c, { x, y: q.y });
       }
+    }
     return m;
   };
   const lo = col(up, true), hi = col(down, false);
@@ -272,7 +281,7 @@ function lineDrop(up: Placed[], down: Placed[], gap: number): number {
       const q = hi.get(k), dx = q ? Math.abs(q.x - p.x) : gap;
       if (dx < gap) drop = Math.max(drop, q!.y - p.y + Math.sqrt(gap * gap - dx * dx));
     }
-  return drop;
+  return drop === -Infinity ? s.capHeight + gap : drop; // keine Tinte übereinander: Versalzeile im Buchstabenabstand
 }
 
 /**
@@ -305,7 +314,7 @@ function stack(rows: Layout[], score: number, s: Style): Layout {
   let y = 0, prev: Layout | null = null;
   for (const row of rows) {
     const r = { ...row, glyphs: row.glyphs.map((g) => ({ ...g, x: g.x - row.minX })) }; // linke Kanten bündig
-    if (prev) y -= lineDrop(prev.glyphs, r.glyphs, s.gap);
+    if (prev) y -= lineDrop(prev.glyphs, r.glyphs, s);
     glyphs.push(...r.glyphs.map((g) => ({ ...g, y })));
     extras.push(...r.extras.map((e) => shift(e, -row.minX, y)));
     Object.assign(joins, r.joins);
@@ -313,6 +322,30 @@ function stack(rows: Layout[], score: number, s: Style): Layout {
   }
   const height = s.capHeight - Math.min(...glyphs.map((g) => g.y! - (g.inst.def.desc ?? 0)));
   return { glyphs, extras, joins, ...extent(glyphs), score, height, lines: rows.length };
+}
+
+/** Je Zeilenzahl 1..MAX_LINES die Teilung mit der kleinsten breitesten Zeile (lineare Partition, O(k·n²)). */
+function balanced(n: number, width: (i: number, j: number) => number): number[][] {
+  const out: number[][] = [];
+  // best[k][j]: kleinste breiteste Zeile für die Wörter 0..j-1 in k Zeilen; from[k][j]: Anfang der letzten Zeile
+  let best = Array.from({ length: n + 1 }, (_, j) => (j ? width(0, j - 1) : 0));
+  const from: number[][] = [Array(n + 1).fill(0)];
+  for (let k = 1; k <= Math.min(MAX_LINES, n); k++) {
+    if (k > 1) {
+      const next = Array(n + 1).fill(Infinity), arg = Array(n + 1).fill(0);
+      for (let j = k; j <= n; j++)
+        for (let i = k - 1; i < j; i++) {
+          const v = Math.max(best[i], width(i, j - 1));
+          if (v < next[j]) (next[j] = v), (arg[j] = i);
+        }
+      best = next;
+      from.push(arg);
+    }
+    const starts: number[] = [];
+    for (let kk = k - 1, j = n; kk >= 0; kk--) starts.unshift((j = from[kk][j]));
+    out.push(starts);
+  }
+  return out;
 }
 
 /**
@@ -343,48 +376,64 @@ export function layoutText(text: string, o: Options & { aspect: number | null })
     return { width: ws.reduce((t, v) => t + v.width, 0) + (j - i) * s.wordGap, score: ws.reduce((t, v) => t + v.score, 0) };
   };
 
-  // Umbrüche: Enter fest, sonst alle an Wortgrenzen bis MAX_LINES Zeilen; je Teilung die Zeilenanfänge
+  // Umbrüche als Zeilenanfänge. Enter fest (leere Zeilen fallen weg: eine Zeile ohne Wort hat keine Tinte);
+  // sonst bis ENUM_WORDS Wörter alle an Wortgrenzen bis MAX_LINES Zeilen, darüber je Zeilenzahl die ausgewogenste
   let splits: number[][];
   if (text.includes("\n")) splits = [spans.flatMap((w, i) => (i === 0 || w.brk ? [i] : []))];
-  else {
+  else if (spans.length <= ENUM_WORDS) {
     splits = [];
     const walk = (starts: number[]) => {
       splits.push(starts);
       if (starts.length < MAX_LINES) for (let k = starts[starts.length - 1] + 1; k < spans.length; k++) walk([...starts, k]);
     };
     walk([0]);
-  }
+  } else splits = balanced(spans.length, (i, j) => nat(i, j).width);
   const H = s.capHeight;
+  // Bewertung: Abweichung vom Seitenverhältnis + größte Lücke einer Zeile zur breitesten (die Verbindungskosten sind für alle Teilungen gleich)
   const rated = splits.map((starts) => {
     const lines = starts.map((i, k) => [i, (starts[k + 1] ?? spans.length) - 1]);
     const ws = lines.map(([i, j]) => nat(i, j).width), wide = Math.max(...ws);
     const height = lines.length * H + (lines.length - 1) * s.gap; // Schätzung: Versalzeilen im Buchstabenabstand
     const shape = aspect ? WEIGHTS.aspect * Math.abs(Math.log(wide / height / aspect)) : 0;
-    const uneven = WEIGHTS.uneven * ws.reduce((t, w) => t + (wide - w) / wide, 0);
-    const joinsScore = lines.reduce((t, [i, j]) => t + nat(i, j).score, 0);
-    return { lines, block: o.targetWidth ?? Math.max(wide, aspect ? aspect * height : 0), base: shape + uneven, score: shape + uneven + joinsScore };
+    const uneven = WEIGHTS.uneven * (1 - Math.min(...ws) / wide);
+    return { lines, block: o.targetWidth ?? Math.max(wide, aspect ? aspect * height : 0), uneven, score: shape + uneven };
   });
-  // ponytail: nur die beste Teilung wird voll gesetzt (fitWidth ist teuer), Varianten unterscheiden sich in den Verbindungen;
-  // Varianten mit anderem Umbruch = die nächstbesten Teilungen ebenso setzen (je Teilung etwa die gleiche Zeit noch einmal)
-  const r = rated.reduce((x, y) => (y.score < x.score ? y : x));
+  rated.sort((x, y) => x.score - y.score);
+
   const ZIEL = "Zielbreite nicht erreichbar – nächstbeste Breite gezeigt";
-  // jede Zeile auf die Blockbreite; ausgelotet mit der besten Variante je Zeile, dann alle Varianten auf die gefundene Breite
-  const fit = (w: number, variants = count) => r.lines.map(([i, j]) => layoutLine(mask(i, j), { ...lo, targetWidth: w, variants }));
-  let w = r.block;
-  const got = () => fit(w, 1).map((x) => x.variants[0].width);
-  let g = got();
-  if (g.some((x) => x < w - 1)) (w = Math.min(...g)), (g = got()); // eine Zeile dehnt sich nicht so weit: Block schmaler
-  if (g.some((x) => x > w + 1)) w = Math.max(...g); // eine Zeile wird nicht so schmal: Block breiter, den Rest füllt pad
-  let combos: { rows: Layout[]; score: number }[] = [{ rows: [], score: r.base }];
-  for (const x of fit(w)) {
-    x.warnings.forEach((m) => m !== ZIEL && warn.add(m));
-    combos = combos
-      // zu schmal kostet nichts extra (die Dehnung bewertet uneven, den Rest füllt pad); zu breit bleibt teuer
-      .flatMap((c) => x.variants.map((v) => ({ rows: [...c.rows, v], score: c.score + v.score - WEIGHTS.deviation * (Math.max(0, w - v.width) / H) })))
-      .sort((p, q) => p.score - q.score)
-      .slice(0, count);
-  }
-  const blocks = combos.map((c) => stack(c.rows.map((v) => pad(v, w, TRACK * s.gap)), c.score, s));
+  // ponytail: lange Texte nur mit der besten Teilung und 2 Varianten je Zeile (fitWidth auf langen Zeilen ist teuer);
+  // mehr Auswahl kostet je Teilung etwa so viel noch einmal
+  const long = spans.length > ENUM_WORDS;
+  /** Eine Teilung setzen: jede Zeile auf die Blockbreite; ausgelotet mit der besten Variante je Zeile, dann alle Varianten auf die gefundene Breite. */
+  const realize = (r: (typeof rated)[number]) => {
+    const fit = (w: number, variants = count) => r.lines.map(([i, j]) => layoutLine(mask(i, j), { ...lo, targetWidth: w, variants }));
+    let w = r.block;
+    const got = () => fit(w, 1).map((x) => x.variants[0].width);
+    let g = got();
+    if (g.some((x) => x < w - 1)) (w = Math.min(...g)), (g = got()); // eine Zeile dehnt sich nicht so weit: Block schmaler
+    if (g.some((x) => x > w + 1)) w = Math.max(...g); // eine Zeile wird nicht so schmal: Block breiter, den Rest füllt pad
+    let combos: { rows: Layout[]; score: number }[] = [{ rows: [], score: r.uneven }];
+    for (const x of fit(w, long ? 2 : count)) {
+      x.warnings.forEach((m) => m !== ZIEL && warn.add(m));
+      combos = combos
+        // zu schmal kostet nichts extra (die Dehnung bewertet uneven, den Rest füllt pad); zu breit bleibt teuer
+        .flatMap((c) => x.variants.map((v) => ({ rows: [...c.rows, v], score: c.score + v.score - WEIGHTS.deviation * (Math.max(0, w - v.width) / H) })))
+        .sort((p, q) => p.score - q.score)
+        .slice(0, count);
+    }
+    // gesetzt ist die Höhe bekannt: Seitenverhältnis am echten Block bewerten
+    return combos.map((c) => {
+      const b = stack(c.rows.map((v) => pad(v, w, TRACK * s.gap)), c.score, s);
+      return aspect ? { ...b, score: b.score + WEIGHTS.aspect * Math.abs(Math.log(b.width / b.height / aspect)) } : b;
+    });
+  };
+  // die besten Teilungen voll setzen: Varianten unterscheiden sich so in Umbruch und Verbindungen.
+  const take = long ? 1 : SPLITS;
+  const blocks = rated
+    .filter((r, k) => k < take && r.score <= rated[0].score + SPLIT_MARGIN)
+    .flatMap(realize)
+    .sort((x, y) => x.score - y.score)
+    .slice(0, count);
   const best = blocks[0], t = o.targetWidth;
   const rowWidths = [...new Set(best.glyphs.map((g) => g.y))].map((y) => extent(best.glyphs.filter((g) => g.y === y)).width);
   if ((t && Math.abs(best.width - t) > 2) || rowWidths.some((rw) => best.width - rw > 2)) warn.add(ZIEL);

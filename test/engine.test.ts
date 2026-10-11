@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import hagen from "../presets/hagen-aad-fock.json";
 import { joinOptions, layoutLine, layoutText, type Options, type Pins } from "../src/engine";
 import { minDist } from "../src/geom";
-import { GLYPHS } from "../src/glyphs";
+import { GLYPHS, cutTop } from "../src/glyphs";
 import { lightGap } from "../src/rules";
 import { FLAECHE_1902 } from "../src/style";
 
@@ -252,6 +252,12 @@ const rows = (v: ReturnType<typeof block>) => {
 const ext = (gs: { x: number; inst: { prof: { minX: number; maxX: number } } }[]) =>
   Math.max(...gs.map((g) => g.x + g.inst.prof.maxX)) - Math.min(...gs.map((g) => g.x + g.inst.prof.minX));
 
+/** Sichtbare Tinte wie im Renderer: zwischen Unterlänge und Oberkante des Buchstabens. */
+const visible = (gs: ReturnType<typeof block>["glyphs"]) =>
+  gs.flatMap((g) => {
+    const top = Math.min(FLAECHE_1902.capHeight, cutTop(g.inst.def, g.inst.p, FLAECHE_1902)), d = g.inst.def.desc ?? 0;
+    return g.inst.ink.filter((q) => q.y >= -d && q.y <= top).map((q) => ({ x: q.x + g.x, y: q.y + (g.y ?? 0) }));
+  });
 test("Block: HAGEN AAD FOCK bei 2:1 → HAGEN / AAD FOCK, gleich breit", () => {
   const r = rows(block("HAGEN AAD FOCK", 2));
   expect(r.map((g) => g.map((x) => x.char).join(""))).toEqual(["HAGEN", "AADFOCK"]);
@@ -264,8 +270,7 @@ test("Block: Enter erzwingt den Umbruch", () => {
 
 test("Block: Zeilen eng, kleinste Lichtweite = Buchstabenabstand", () => {
   const r = rows(block("HAGEN AAD FOCK", 2));
-  const ink = (gs: typeof r[0]) => gs.flatMap((g) => g.inst.ink.map((q) => ({ x: q.x + g.x, y: q.y + (g.y ?? 0) })));
-  const d = minDist(ink(r[0]), 0, ink(r[1]), 0, 1000);
+  const d = minDist(visible(r[0]), 0, visible(r[1]), 0, 1000); // sichtbare Tinte: Strichenden ragen ungeschnitten über das Band
   expect(Math.abs(d - FLAECHE_1902.gap)).toBeLessThanOrEqual(1);
 });
 
@@ -280,4 +285,47 @@ test("Block: Pins hinter dem Umbruch treffen den richtigen Buchstaben", () => {
   const v = layoutText("AB\nCF", { ...opts(), aspect: 1, pins: { letters: { 4: { w: 330 } }, joins: {} } }).variants[0];
   expect(v.glyphs.find((g) => g.index === 4)!.char).toBe("F");
   expect(v.glyphs.find((g) => g.index === 4)!.inst.p.w).toBe(330);
+});
+
+const ratio = (v: ReturnType<typeof block>) => v.width / v.height;
+
+test("Block: Lichtweite = Buchstabenabstand in allen Varianten, auch mit Unter- und Oberlängen", () => {
+  const { variants } = layoutText("agypq\nThklb", { ...opts(), aspect: null });
+  expect(variants.length).toBeGreaterThan(1);
+  for (const v of variants) {
+    const [a, b] = rows(v);
+    expect(Math.abs(minDist(visible(a), 0, visible(b), 0, 1000) - FLAECHE_1902.gap)).toBeLessThanOrEqual(1);
+  }
+});
+
+test("Block: Höhe und Zeilenzahl", () => {
+  const one = layoutLine("DIE FLÄCHE", opts()).variants[0];
+  expect([one.lines, one.height]).toEqual([1, FLAECHE_1902.capHeight]);
+  const v = block("agypq\nThklb", null);
+  expect(v.lines).toBe(2);
+  expect(v.height).toBe(FLAECHE_1902.capHeight - Math.min(...v.glyphs.map((g) => g.y! - (g.inst.def.desc ?? 0))));
+});
+
+test("Block: höchstens 6 Zeilen", () => {
+  const { variants } = layoutText("A B C D E F G H I J K L", { ...opts(), aspect: 1 / 2 });
+  for (const v of variants) expect(v.lines).toBeLessThanOrEqual(6);
+});
+
+test("Block: Varianten unterscheiden sich auch im Umbruch", () => {
+  const { variants } = layoutText("HAGEN AAD FOCK", { ...opts(), aspect: 2 });
+  const breaks = new Set(variants.map((v) => rows(v).map((r) => r.map((g) => g.char).join("")).join("/")));
+  expect(breaks.size).toBeGreaterThan(1);
+});
+
+test("Block: das Seitenverhältnis wirkt (1:1 höher als 2:1)", () => {
+  const t = "DIE FLÄCHE IST EINE ZEITSCHRIFT AUS", sq = block(t, 1), wide = block(t, 2);
+  expect(sq.lines).toBeGreaterThanOrEqual(3);
+  expect(Math.abs(Math.log(ratio(sq)))).toBeLessThan(Math.abs(Math.log(ratio(wide))));
+});
+
+test("Block: langer Text (60 Wörter) in unter 1 s", () => {
+  const t = Array.from({ length: 60 }, (_, i) => ["DIE", "FLÄCHE", "Wiener", "Werkstätte", "HAGEN", "aus"][i % 6]).join(" ");
+  const t0 = performance.now(), v = block(t, 1);
+  expect(performance.now() - t0).toBeLessThan(1000);
+  expect(v.lines).toBeLessThanOrEqual(6);
 });
